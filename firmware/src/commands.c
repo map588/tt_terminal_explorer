@@ -130,6 +130,18 @@ static const char *cmd_resume(int argc, char **argv) {
     return NULL;
 }
 
+/* Hold reset low and give the design clock edges while it is low.
+ * Some designs need a clocked reset. With a running clock the 2 ms
+ * hold covers that; in step mode we make the edges ourselves. */
+static void reset_pulse(void) {
+    gpio_put(TT_PIN_PROJ_NRST, 0);
+    if (clk_mode == CLK_STEP)
+        asic_clk_step(10);
+    else
+        sleep_ms(2);
+    gpio_put(TT_PIN_PROJ_NRST, 1);
+}
+
 static const char *cmd_design(int argc, char **argv) {
     uint32_t n;
     if (argc != 2 || !parse_u32(argv[1], &n))
@@ -138,9 +150,7 @@ static const char *cmd_design(int argc, char **argv) {
         return "range";
     apply_safe_profile();
     tt_select_design(n);
-    gpio_put(TT_PIN_PROJ_NRST, 0);
-    sleep_ms(2);
-    gpio_put(TT_PIN_PROJ_NRST, 1);
+    reset_pulse();
     current_design = (int)n;
     sprintf(reply, "%lu", (unsigned long)n);
     return NULL;
@@ -148,9 +158,7 @@ static const char *cmd_design(int argc, char **argv) {
 
 static const char *cmd_reset(int argc, char **argv) {
     if (argc == 1) { /* pulse */
-        gpio_put(TT_PIN_PROJ_NRST, 0);
-        sleep_ms(2);
-        gpio_put(TT_PIN_PROJ_NRST, 1);
+        reset_pulse();
         return NULL;
     }
     if (argc == 2 && !strcmp(argv[1], "1")) { /* assert: NRST low */

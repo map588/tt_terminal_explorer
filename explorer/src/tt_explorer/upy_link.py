@@ -8,8 +8,14 @@ exec and synthesizes the same "ok/err" replies, so the UI cannot tell
 the two firmwares apart.
 
 Marker convention inside the REPL: helper code prints exactly one
-line starting with "R " (ok + payload) or "E " (err + token). Every
-other stdout line is an SDK log line and is forwarded to the console.
+line starting with "R " (ok + payload) or "E " (err + token). A
+board-side timer pushes "U <hex>" lines whenever uo_out changes
+(started with the `monitor <hz>` command). Every other stdout line
+is an SDK log line and is forwarded to the console.
+
+A background thread reads the port. Between execs it dispatches
+pushed lines at once; during an exec it collects the framed response
+(raw REPL brackets every exec with "OK" ... 0x04 0x04 ">").
 """
 
 from __future__ import annotations
@@ -30,6 +36,8 @@ RAW_REPL_PROMPT = b"raw REPL; CTRL-B to exit\r\n>"
 
 # Runs once at connect: get the SDK handle the boot script made and
 # define one helper per command that needs more than a single call.
+# The globals survive reconnects, so a monitor timer from an earlier
+# session is stopped before _mon is rebuilt.
 BOOTSTRAP = """
 try:
     tt
@@ -37,11 +45,29 @@ except NameError:
     from ttboard.demoboard import DemoBoard
     tt = DemoBoard.get()
 from ttboard.mode import RPMode
+import machine as _m
 import time as _t
+try:
+    if _mon['t']:
+        _mon['t'].deinit()
+except NameError:
+    pass
+_mon = {'t': None, 'last': -1}
 def _R(s):
     print('R ' + s)
+def _tt_sdk():
+    try:
+        f = open('/VERSION')
+        v = f.read()
+        f.close()
+        for ln in v.split('\\n'):  # "version=3.0.7", "commit=..."
+            if ln.startswith('version='):
+                return ln[8:].strip()
+        return 'unknown'
+    except OSError:
+        return 'unknown'
 def _tt_hello():
-    _R('tt-explorer 2 shuttle=%s upy=1' % tt.shuttle.run)
+    _R('tt-explorer 2 shuttle=%s upy=1 sdk=%s' % (tt.shuttle.run, _tt_sdk()))
 def _tt_status():
     d = tt.shuttle.enabled
     run = tt.is_auto_clocking
@@ -55,12 +81,23 @@ def _tt_design(n):
     for d in tt.shuttle.all:
         if d.count == n:
             d.enable(force=True)
-            tt.reset_project(True)
-            _t.sleep_ms(2)
-            tt.reset_project(False)
-            _R(str(n))
+            _tt_reset(2)
             return
     print('E no-design')
+def _tt_reset(arg):
+    if arg == 1:
+        tt.reset_project(True)
+    elif arg == 0:
+        tt.reset_project(False)
+    else:
+        tt.reset_project(True)
+        if tt.is_auto_clocking:
+            _t.sleep_ms(2)
+        else:
+            for _ in range(10):
+                tt.clock_project_once()
+        tt.reset_project(False)
+    _R('')
 def _tt_ui(v):
     if tt.mode != RPMode.ASIC_RP_CONTROL:
         tt.mode = RPMode.ASIC_RP_CONTROL
@@ -70,8 +107,28 @@ def _tt_step(n):
     for _ in range(n):
         tt.clock_project_once()
     _R(str(n))
+def _tt_mon_cb(t):
+    v = int(tt.uo_out.value)
+    if v != _mon['last']:
+        _mon['last'] = v
+        print('U %02x' % v)
+def _tt_monitor(freq):
+    if _mon['t']:
+        _mon['t'].deinit()
+        _mon['t'] = None
+    _mon['last'] = -1
+    if freq > 0:
+        _mon['t'] = _m.Timer(mode=_m.Timer.PERIODIC, freq=freq,
+                             callback=_tt_mon_cb)
+    _R('')
 _R('ready')
 """
+
+
+class _Pending:
+    def __init__(self, future: asyncio.Future):
+        self.future = future
+        self.acked = False
 
 
 class UpyLink:
@@ -84,18 +141,24 @@ class UpyLink:
     clk_max_hz = 66_000_000
     clock_note = "PWM"
 
+    # The board pushes uo_out changes; the UI need not poll them.
+    pushes_uo = True
+
     def __init__(self, port: str, on_line: Callable[[str], None]):
-        self._ser = serial.Serial(port, 115200, timeout=5)
+        self._ser = serial.Serial(port, 115200, timeout=0.2)
         self._on_line = on_line
         self._loop = asyncio.get_running_loop()
         self._lock = asyncio.Lock()
-        self._io = threading.Lock()
         self._closed = False
         self._last_freq = 0
+        self._pending: _Pending | None = None
+        self._uo_sink: Callable[[int], None] | None = None
         self._enter_raw_repl()
-        out, err = self._exec(BOOTSTRAP)
+        out, err = self._exec_blocking(BOOTSTRAP)
         if err or "R ready" not in out:
             raise OSError(f"ttboard SDK bootstrap failed: {err or out!r}")
+        self._thread = threading.Thread(target=self._reader, daemon=True)
+        self._thread.start()
 
     # -- SerialLink surface --
 
@@ -117,12 +180,24 @@ class UpyLink:
     def write_raw(self, text: str) -> None:
         raise OSError("raw sessions need the tt_host firmware")
 
+    def set_uo_sink(self, sink: Callable[[int], None] | None) -> None:
+        """sink gets each pushed uo_out value (called on the loop)."""
+        self._uo_sink = sink
+
     def close(self) -> None:
         self._closed = True
         try:
-            with self._io:
-                self._ser.write(b"\x02")  # back to the friendly REPL
-                self._ser.close()
+            self._ser.cancel_read()
+        except (OSError, AttributeError):
+            pass
+        self._thread.join(timeout=1.0)
+        try:
+            # stop the push timer and hand the friendly REPL back
+            self._ser.timeout = 0.5
+            self._ser.write(b"_tt_monitor(0)\x04")
+            time.sleep(0.2)
+            self._ser.write(b"\x02")
+            self._ser.close()
         except OSError:
             pass
 
@@ -131,8 +206,13 @@ class UpyLink:
             code = self._translate(line.strip())
             if code is None:
                 return Reply(False, "unknown")
-            out, err = await asyncio.wait_for(
-                self._loop.run_in_executor(None, self._exec, code), timeout)
+            fut: asyncio.Future = self._loop.create_future()
+            self._pending = _Pending(fut)
+            try:
+                self._ser.write(code.encode() + b"\x04")
+                out, err = await asyncio.wait_for(fut, timeout)
+            finally:
+                self._pending = None
             return self._to_reply(out, err)
 
     # -- command translation --
@@ -168,13 +248,14 @@ class UpyLink:
                     "_R(str(int(tt.auto_clocking_freq)))")
         if cmd == "reset":
             if not args:
-                return ("tt.reset_project(True)\n_t.sleep_ms(2)\n"
-                        "tt.reset_project(False)\n_R('')")
+                return "_tt_reset(2)"
             if args == ["1"]:
-                return "tt.reset_project(True)\n_R('')"
+                return "_tt_reset(1)"
             if args == ["0"]:
-                return "tt.reset_project(False)\n_R('')"
+                return "_tt_reset(0)"
             return None
+        if cmd == "monitor" and len(args) == 1 and args[0].isdigit():
+            return f"_tt_monitor({int(args[0])})"
         if cmd == "ui":
             if not args:
                 return "_R('%02x' % int(tt.ui_in.value))"
@@ -212,6 +293,8 @@ class UpyLink:
                 result = Reply(True, "", info)
             elif line.startswith("E "):
                 result = Reply(False, line[2:], info)
+            elif self._dispatch_push(line):
+                continue
             else:
                 info.append(f"# upy: {line}")
                 self._on_line(f"# upy: {line}")
@@ -221,31 +304,102 @@ class UpyLink:
             return Reply(False, "upy-exception", info)
         return result or Reply(False, "no-reply", info)
 
-    # -- raw REPL I/O (blocking, called in the executor) --
+    def _dispatch_push(self, line: str) -> bool:
+        """Handle a pushed 'U <hex>' line. Returns True when it was one."""
+        if not line.startswith("U "):
+            return False
+        try:
+            value = int(line[2:], 16)
+        except ValueError:
+            return False
+        if self._uo_sink is not None:
+            self._uo_sink(value)
+        return True
+
+    # -- reader thread --
+
+    def _reader(self) -> None:
+        """Routes bytes: exec responses to the pending future, pushed
+        lines and log lines straight to their sinks."""
+        buf = b""
+        while not self._closed:
+            try:
+                data = self._ser.read(256)
+            except (OSError, serial.SerialException):
+                break
+            if not data:
+                continue
+            buf += data
+            while True:
+                pend = self._pending
+                if pend is None:
+                    # idle: only complete pushed/log lines can arrive
+                    if b"\n" not in buf:
+                        break
+                    raw, buf = buf.split(b"\n", 1)
+                    self._route_idle_line(raw)
+                    continue
+                if not pend.acked:
+                    # drop pushed lines that raced the exec, then the
+                    # raw REPL's OK acknowledgement
+                    if b"\n" in buf and not buf.startswith(b"OK"):
+                        raw, buf = buf.split(b"\n", 1)
+                        self._route_idle_line(raw)
+                        continue
+                    if buf.startswith(b"OK"):
+                        buf = buf[2:]
+                        pend.acked = True
+                        continue
+                    break  # partial OK or partial line
+                end = buf.find(b"\x04>")
+                if end < 0:
+                    break
+                body, buf = buf[:end], buf[end + 2:]
+                stdout, _, err = body.partition(b"\x04")
+                self._loop.call_soon_threadsafe(
+                    self._resolve, pend,
+                    stdout.decode(errors="replace"),
+                    err.rstrip(b"\x04").decode(errors="replace"))
+                self._pending = None
+
+    def _route_idle_line(self, raw: bytes) -> None:
+        line = ANSI.sub("", raw.decode(errors="replace")).strip()
+        if not line:
+            return
+        self._loop.call_soon_threadsafe(self._route_idle_dispatch, line)
+
+    def _route_idle_dispatch(self, line: str) -> None:
+        if not self._dispatch_push(line):
+            self._on_line(f"# upy: {line}")
+
+    @staticmethod
+    def _resolve(pend: _Pending, out: str, err: str) -> None:
+        if not pend.future.done():
+            pend.future.set_result((out, err))
+
+    # -- raw REPL I/O (blocking, used before the reader starts) --
 
     def _enter_raw_repl(self) -> None:
-        with self._io:
-            self._ser.write(b"\r\x03\x03")  # interrupt anything running
-            time.sleep(0.3)
-            self._ser.reset_input_buffer()
-            self._ser.write(b"\r\x01")  # ctrl-A
-            got = self._ser.read_until(RAW_REPL_PROMPT)
-            if RAW_REPL_PROMPT not in got:
-                raise OSError("no raw REPL prompt (not MicroPython?)")
+        self._ser.timeout = 5
+        self._ser.write(b"\r\x03\x03")  # interrupt anything running
+        time.sleep(0.3)
+        self._ser.reset_input_buffer()
+        self._ser.write(b"\r\x01")  # ctrl-A
+        got = self._ser.read_until(RAW_REPL_PROMPT)
+        if RAW_REPL_PROMPT not in got:
+            raise OSError("no raw REPL prompt (not MicroPython?)")
 
-    def _exec(self, code: str) -> tuple[str, str]:
-        """Run one snippet, return (stdout, stderr)."""
-        with self._io:
-            if self._closed:
-                raise OSError("closed")
-            self._ser.write(code.encode() + b"\x04")
-            ack = self._ser.read(2)
-            if ack != b"OK":
-                raise OSError(f"raw REPL lost sync: {ack!r}")
-            body = self._ser.read_until(b"\x04>")[:-1]
-            stdout, _, err = body.partition(b"\x04")
-            return (stdout.decode(errors="replace"),
-                    err.rstrip(b"\x04").decode(errors="replace"))
+    def _exec_blocking(self, code: str) -> tuple[str, str]:
+        """Run one snippet before the reader thread exists."""
+        self._ser.write(code.encode() + b"\x04")
+        ack = self._ser.read(2)
+        if ack != b"OK":
+            raise OSError(f"raw REPL lost sync: {ack!r}")
+        body = self._ser.read_until(b"\x04>")[:-1]
+        self._ser.timeout = 0.2  # reader-thread polling interval
+        stdout, _, err = body.partition(b"\x04")
+        return (stdout.decode(errors="replace"),
+                err.rstrip(b"\x04").decode(errors="replace"))
 
 
 def _hex8(s: str) -> int | None:

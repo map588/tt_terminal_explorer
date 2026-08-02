@@ -104,6 +104,9 @@ def test_upy_translate():
     assert link._last_freq == 1000
     assert "clock_project_PWM(1000)" in link._translate("resume")
     assert link._translate("step 10") == "_tt_step(10)"
+    assert link._translate("reset") == "_tt_reset(2)"
+    assert link._translate("reset 1") == "_tt_reset(1)"
+    assert link._translate("monitor 20") == "_tt_monitor(20)"
     assert link._translate("ui ff") == "_tt_ui(255)"
     assert "ASIC_MANUAL_INPUTS" in link._translate("ui off")
     assert "uio_oe_pico.value = 240" in link._translate("uiod f0")

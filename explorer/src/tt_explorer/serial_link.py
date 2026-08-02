@@ -54,6 +54,7 @@ class SerialLink:
     clk_min_hz = 1
     clk_max_hz = 75_000_000  # clk_sys / 2
     clock_note = "PIO, exact"
+    pushes_uo = False  # the UI polls uo over this link
 
     def __init__(self, port: str, on_line: Callable[[str], None]):
         """on_line gets every unsolicited line (called on the loop)."""

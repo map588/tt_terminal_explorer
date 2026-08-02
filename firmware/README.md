@@ -18,7 +18,7 @@ this protocol, and a bare terminal (`tio`, `screen`) works too.
 | `freq <hz>` | free-running clock, 1 Hz – clk_sys/2 (75 MHz), made by PIO with one-sys-cycle resolution. The true output frequency never exceeds the request; the reply reports it. |
 | `stop` / `step [n]` / `resume` | park the clock low, pulse it n times, restart the clock |
 | `design <n>` | safe pin profile, mux-select design n, reset pulse |
-| `reset [1\|0]` | pulse (no arg), assert, or release the project reset |
+| `reset [1\|0]` | pulse (no arg), assert, or release the project reset. A pulse in step mode makes 10 clock edges while reset is low, for designs that need a clocked reset. |
 | `ui <hh>` / `ui off` / `ui` | drive ui_in, release it for the DIP switches / PMOD, or read the pad levels |
 | `uo` / `uio` | read uo_out / uio pad levels (hex byte) |
 | `uiod [hh]` / `uiow <hh>` | uio direction mask (1 = MCU drives) / output latch |

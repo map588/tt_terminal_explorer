@@ -201,7 +201,16 @@ class TTExplorerApp(App):
                           f"using {self._shuttle} from --shuttle")
             self.sub_title = (f"{self.link.port} · fw v{hello['version']}"
                               f" · {self._shuttle}")
+            sdk = hello.get("sdk")
+            if sdk and sdk != "unknown":
+                self.sub_title = f"{self.sub_title} · SDK {sdk}"
         await self._refresh_status()
+        if getattr(self.link, "pushes_uo", False):
+            self.link.set_uo_sink(self._on_uo_push)
+            await self.send("monitor 20")
+
+    def _on_uo_push(self, value: int) -> None:
+        self.query_one(UoPanel).show(value)
 
     # -- command plumbing --
 
@@ -267,10 +276,11 @@ class TTExplorerApp(App):
         if link is None or link.busy or link.raw:
             return
         try:
-            reply = await link.request("uo", timeout=1.0)
-            if reply.ok:
-                self.query_one(UoPanel).show(
-                    protocol.parse_hex_byte(reply.payload))
+            if not getattr(link, "pushes_uo", False):
+                reply = await link.request("uo", timeout=1.0)
+                if reply.ok:
+                    self.query_one(UoPanel).show(
+                        protocol.parse_hex_byte(reply.payload))
             reply = await link.request("uio", timeout=1.0)
             if reply.ok:
                 self.query_one(UioPanel).show(
