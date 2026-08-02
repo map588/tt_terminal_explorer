@@ -8,7 +8,7 @@ designs.
 
 One command per line. Each command gets exactly one reply line,
 `ok [payload]` or `err <token>`. Informational lines start with `# `.
-Type `help` on the port for the list. The `../explorer` TUI speaks
+Type `help` on the port for the list. The `../explorer` TUI communicates over
 this protocol, and a bare terminal (`tio`, `screen`) works too.
 
 | Command | Effect |

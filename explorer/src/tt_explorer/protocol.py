@@ -1,6 +1,6 @@
 """Pure helpers for the tt-explorer serial protocol.
 
-The firmware speaks one command per line and answers with exactly one
+The firmware accepts one command per line and answers with exactly one
 "ok [payload]" or "err <token>" line. Informational lines start with
 "# ". No I/O happens here, so everything is unit-testable.
 """

@@ -32,7 +32,6 @@ from .widgets import (
     UoPanel,
 )
 
-MAX_HZ = 75_000_000  # clk_sys / 2, the firmware clock ceiling
 
 
 def parse_hz(text: str) -> int | None:
@@ -188,6 +187,9 @@ class TTExplorerApp(App):
             self._log(f"! cannot open {ports[0]}: {exc}")
             return
         self._log(f"# connected to {ports[0]}")
+        self.query_one(ClockPanel).set_range(
+            self.link.clk_min_hz, self.link.clk_max_hz,
+            self.link.clock_note)
         self._carrier = None
         reply = await self.send("hello")
         if reply and reply.ok:
@@ -352,7 +354,9 @@ class TTExplorerApp(App):
         self.query_one(UioPanel).reset()
         self._ui_driving = True
         if p.clock_hz:
-            await self._clock_send(f"freq {min(p.clock_hz, MAX_HZ)}")
+            hz = min(max(p.clock_hz, self.link.clk_min_hz),
+                     self.link.clk_max_hz) if self.link else p.clock_hz
+            await self._clock_send(f"freq {hz}")
         await self._refresh_status()
         tabs = self.query_one(TabbedContent)
         tabs.get_tab("tab-bench").label = f"Bench · {p.title or p.macro}"

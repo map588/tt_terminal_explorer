@@ -50,6 +50,11 @@ class _Pending:
 
 
 class SerialLink:
+    # tt_host clock: PIO generated, one sys-clock-cycle resolution.
+    clk_min_hz = 1
+    clk_max_hz = 75_000_000  # clk_sys / 2
+    clock_note = "PIO, exact"
+
     def __init__(self, port: str, on_line: Callable[[str], None]):
         """on_line gets every unsolicited line (called on the loop)."""
         self._ser = serial.Serial(port, BAUD, timeout=0.2)

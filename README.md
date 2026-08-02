@@ -16,12 +16,12 @@ The project has two parts:
 - **firmware/** builds `tt_host.uf2` for the board's RP2350. It
   serves a small, human-readable command protocol over USB serial:
   select a design through the project mux, control the clock, and
-  read or drive the pins. A bare terminal (`tio`, `screen`) can
-  speak it directly.
+  read or drive the pins. A bare terminal (`tio`, `screen`) can use
+  it directly.
 - **explorer/** is the terminal UI (Python,
-  [Textual](https://textual.textualize.io)). It speaks the protocol
-  and adds the shuttle index: titles, descriptions, and pin names
-  for every design.
+  [Textual](https://textual.textualize.io)). It communicates over
+  the protocol and adds the shuttle index: titles, descriptions,
+  and pin names for every design.
 
 ![The bench with a design loaded](docs/bench.svg)
 
@@ -39,11 +39,15 @@ The project has two parts:
 - Set the uio direction per pin. Rows show a direction hint parsed
   from the design's pin names, and pins that look like design outputs
   get a warning tag before you drive them.
-- Set any clock from 1 Hz to 75 MHz (PIO-generated, one-cycle
-  resolution, never above your requested frequency), or stop the clock and step it
-  one pulse at a time.
+- Set the project clock, or stop it and step one pulse at a time.
+  With the C firmware the clock is PIO-generated: 1 Hz to 75 MHz,
+  exact to one sys-clock cycle, never above the requested
+  frequency.
 - Detect what sits on the board at boot (chip carrier, FPGA
   breakout, or nothing) and show it in the UI.
+- Work with both firmwares. The UI detects whether the board runs
+  the stock Tiny Tapeout MicroPython firmware or this repo's C
+  firmware, and uses the matching protocol.
 
 ## What you need
 
@@ -73,6 +77,11 @@ flash without touching the BOOTSEL button.
 
 ## Quickstart
 
+The UI also communicates with the stock Tiny Tapeout MicroPython firmware that
+ships on the board, so step 1 is optional: plug the board in and go
+straight to step 2. Flash the C firmware when you want its exact
+clock and extension hooks (see the next section).
+
 1. Flash the firmware. Download `tt_host.uf2` from the
    [Releases](../../releases) page. Hold BOOTSEL, plug the board
    in, and copy the file to the `RP2350` drive that appears. Or:
@@ -88,8 +97,53 @@ flash without touching the BOOTSEL button.
    uv run tt-explorer
    ```
 
-   The serial port is autodetected. Use `--port /dev/tty...` to
-   override. Pick a design from the list and press enter.
+   The serial port is autodetected, and so is the firmware (by USB
+   id). Use `--port /dev/tty...` to override the port. Pick a
+   design from the list and press enter.
+
+## Why the C firmware
+
+The stock MicroPython firmware is a great lab assistant: a Python
+REPL on the board, easy to poke by hand, and this UI drives it
+fine for browsing designs, clocking them, and watching pins.
+
+The C firmware is worth the one-time flash when timing starts to
+matter:
+
+- **Exact clock.** A PIO state machine makes the project clock:
+  1 Hz to 75 MHz, exact to one sys-clock cycle, and never above
+  the frequency you asked for. The stock firmware clocks with the
+  PWM block: it bottoms out near 8 Hz and snaps to divider steps.
+- **Fast, steady replies.** A command runs in microseconds of C,
+  with no interpreter or garbage collector between you and the
+  pads. Scripted interaction stays cycle-accurate: drive a pin,
+  pulse the clock once, sample the result, repeat thousands of
+  times.
+- **A place for your own commands.** A design-specific command, or
+  a whole raw byte-stream session (a program loader, a debugger),
+  is one C function and one table row. See
+  [docs/extending.md](docs/extending.md).
+
+## What that unlocks: a worked example
+
+This kit was extracted from
+[tt_um_brainf-ck_asic](https://github.com/map588/tt_um_brainfck_asic),
+a Brainf*ck computer on the same shuttle. Its firmware feeds the
+chip one instruction per clock pulse through a bit-banged
+handshake, mirrors the chip's program counter to stay in step,
+emulates the SPI RAM tape on the RP2350's second core, and works
+around four silicon bugs at exact clock edges. None of that fits
+through a Python REPL at millisecond granularity.
+
+On top of those firmware hooks, the UI grew a third tab. Programs
+run on the real chip:
+
+![A BF program running on the ASIC](docs/bf_run.svg)
+
+And an instruction-level debugger with breakpoints, stepping the
+silicon one instruction at a time:
+
+![The BF debugger stepping the chip](docs/bf_debug.svg)
 
 ## Build the firmware from source
 

@@ -78,6 +78,14 @@ def _dot(level: int) -> str:
     return "●" if level else "○"
 
 
+def fmt_hz(hz: int) -> str:
+    if hz >= 1_000_000 and hz % 100_000 == 0:
+        return f"{hz / 1e6:g} MHz"
+    if hz >= 1_000 and hz % 100 == 0:
+        return f"{hz / 1e3:g} kHz"
+    return f"{hz:,} Hz"
+
+
 class ProjectList(Vertical):
     """Filterable table of shuttle projects."""
 
@@ -346,8 +354,7 @@ class ClockPanel(Vertical):
                 yield Label("presets: ")
                 for hz, label in self.PRESETS:
                     yield Button(label, id=f"preset-{hz}", classes="preset")
-            yield Label("1 Hz – 75 MHz (PIO, exact to one sys-clock cycle)",
-                        classes="hint")
+            yield Label("", id="clk-range", classes="hint")
         with Vertical(id="clk-step"):
             with Horizontal(classes="clk-line"):
                 yield Static("⏸ STOPPED (single-step mode)",
@@ -387,6 +394,11 @@ class ClockPanel(Vertical):
 
     def set_steps(self, n: int) -> None:
         self.query_one("#step-total", Static).update(f"stepped {n:,}")
+
+    def set_range(self, min_hz: int, max_hz: int, note: str) -> None:
+        """The clock range of the connected firmware."""
+        self.query_one("#clk-range", Label).update(
+            f"min {fmt_hz(min_hz)} · max {fmt_hz(max_hz)} ({note})")
 
     def set_error(self, text: str) -> None:
         self.query_one("#clk-error", Static).update(text)

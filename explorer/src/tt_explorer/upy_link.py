@@ -77,6 +77,13 @@ _R('ready')
 class UpyLink:
     """Same public surface as SerialLink, backed by the raw REPL."""
 
+    # The stock firmware clocks with the RP2 PWM block. At the SDK's
+    # 133 MHz system clock the divider bottoms out near 8 Hz and the
+    # top is sys/2.
+    clk_min_hz = 8
+    clk_max_hz = 66_000_000
+    clock_note = "PWM"
+
     def __init__(self, port: str, on_line: Callable[[str], None]):
         self._ser = serial.Serial(port, 115200, timeout=5)
         self._on_line = on_line
