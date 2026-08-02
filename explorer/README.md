@@ -9,9 +9,14 @@ project clock, and peek/poke the ui/uo/uio pins.
 
 ```sh
 uv sync
-uv run tt-explorer            # autodetects /dev/tty.usbmodem*
-uv run tt-explorer --port /dev/tty.usbmodemXXXX
+uv run tt-explorer --shuttle ttsky25b     # port autodetected
+uv run tt-explorer --shuttle ttsky25a --port /dev/tty.usbmodemXXXX
 ```
+
+`--shuttle` (or `TT_SHUTTLE` in the environment) is required. It
+names the shuttle run the chip is from. The UI downloads that
+shuttle's index from index.tinytapeout.com to get the project
+list, descriptions, and pin names.
 
 ## Layout
 

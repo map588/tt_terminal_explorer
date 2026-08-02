@@ -7,7 +7,7 @@ set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Platform")
 
 include(pico_sdk_import.cmake)
 
-project(tt_sky25b_explorer C CXX ASM)
+project(tt_terminal_explorer C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 
 pico_sdk_init()

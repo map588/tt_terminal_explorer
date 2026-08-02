@@ -1,4 +1,4 @@
-"""Shuttle index: fetch, cache, and parse the ttsky25b project list."""
+"""Shuttle index: fetch, cache, and parse a shuttle's project list."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_SHUTTLE = "ttsky25b"
 FIELDS = "address,title,author,description,clock_hz,pinout"
 CACHE_DIR = Path("~/.cache/tt-explorer").expanduser()
 CACHE_MAX_AGE_S = 7 * 24 * 3600
@@ -44,8 +43,7 @@ def _parse(raw: bytes) -> list[Project]:
     return projects
 
 
-def load_index(shuttle: str = DEFAULT_SHUTTLE,
-               refresh: bool = False) -> list[Project]:
+def load_index(shuttle: str, refresh: bool = False) -> list[Project]:
     """Return the project list for a shuttle. Network fetch when the
     cache is stale or refresh is requested; otherwise (and on fetch
     failure) use the cache."""

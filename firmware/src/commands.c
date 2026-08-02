@@ -20,7 +20,10 @@
 #include "tt_pins.h"
 
 #define PROTO_VERSION 2u
-#define SHUTTLE_NAME "ttsky25b" /* which shuttle index the UI loads */
+/* The shuttle this build is for. The hello reply reports it as a
+ * hint; the UI's required --shuttle flag decides which index loads
+ * and warns on a mismatch. */
+#define SHUTTLE_NAME "ttsky25b"
 
 static int current_design = -1; /* -1 = none selected since boot */
 static bool ui_driven = true; /* false: ui pins released for DIP/PMOD */

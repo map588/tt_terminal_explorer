@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -123,11 +124,11 @@ class TTExplorerApp(App):
         ("space", "step_one", "step ×1"),
     ]
 
-    def __init__(self, port: str | None = None) -> None:
+    def __init__(self, shuttle: str, port: str | None = None) -> None:
         super().__init__()
         self._port_arg = port
         self.link: SerialLink | None = None
-        self._shuttle = index.DEFAULT_SHUTTLE
+        self._shuttle = shuttle
         self._design: int | None = None
         self._freq = 0
         self._ui_driving = True
@@ -194,7 +195,10 @@ class TTExplorerApp(App):
         reply = await self.send("hello")
         if reply and reply.ok:
             hello = protocol.parse_hello(reply.payload)
-            self._shuttle = hello.get("shuttle", self._shuttle)
+            board = hello.get("shuttle")
+            if board and board != self._shuttle:
+                self._log(f"! the firmware was built for {board}, "
+                          f"using {self._shuttle} from --shuttle")
             self.sub_title = (f"{self.link.port} · fw v{hello['version']}"
                               f" · {self._shuttle}")
         await self._refresh_status()
@@ -430,9 +434,15 @@ class TTExplorerApp(App):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tiny Tapeout board explorer")
+    parser.add_argument("--shuttle", default=os.environ.get("TT_SHUTTLE"),
+                        help="shuttle run the chip is from, e.g. ttsky25a. "
+                             "Sets which project index to download. "
+                             "TT_SHUTTLE in the environment works too.")
     parser.add_argument("--port", help="serial device (default: autodetect)")
     args = parser.parse_args()
-    TTExplorerApp(port=args.port).run()
+    if not args.shuttle:
+        parser.error("--shuttle is required (or set TT_SHUTTLE)")
+    TTExplorerApp(shuttle=args.shuttle, port=args.port).run()
 
 
 if __name__ == "__main__":

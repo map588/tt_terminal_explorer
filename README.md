@@ -1,4 +1,4 @@
-# tt_sky25b_explorer
+# tt_terminal_explorer
 
 A [Tiny Tapeout](https://tinytapeout.com) shuttle chip carries
 hundreds of small hardware designs on one die. Only one design is
@@ -7,9 +7,10 @@ board's RP2350 microcontroller controls that multiplexer, the
 design's clock, and all of its pins.
 
 This project turns the demo board into an interactive lab bench for
-the ttsky25b shuttle. You browse the designs in a terminal UI, load
-one onto the chip, clock it at any speed or step it one pulse at a
-time, drive its inputs, and watch its outputs live.
+whatever shuttle chip sits on it. You browse the designs in a
+terminal UI, load one onto the chip, clock it at any speed or step
+it one pulse at a time, drive its inputs, and watch its outputs
+live. Tested on ttsky25a and ttsky25b chips.
 
 The project has two parts:
 
@@ -51,7 +52,8 @@ The project has two parts:
 
 ## What you need
 
-Hardware: a Tiny Tapeout ttsky25b demo board and a USB cable.
+Hardware: a Tiny Tapeout demo board with a shuttle chip, and a USB
+cable.
 
 Software, for the terminal UI:
 
@@ -90,11 +92,14 @@ clock and extension hooks (see the next section).
    picotool load -x tt_host.uf2
    ```
 
-2. Run the UI:
+2. Run the UI, naming the shuttle run your chip is from
+   (`ttsky25a`, `ttsky25b`, ...). The UI downloads that shuttle's
+   index from index.tinytapeout.com, which is where the project
+   list, descriptions, and pin names come from:
 
    ```sh
    cd explorer
-   uv run tt-explorer
+   uv run tt-explorer --shuttle ttsky25b   # or: export TT_SHUTTLE=ttsky25b
    ```
 
    The serial port is autodetected, and so is the firmware (by USB
@@ -215,9 +220,7 @@ The UI, UO, and UIO busses are shared on the same nets.
 ## Protocol
 
 See `firmware/README.md` for the command table. The protocol is
-simple and can be written by hand. The `hello` reply names the shuttle so
-the TUI loads the matching index.  It is not specific to the ttsky25b
-shuttle, but I've not tested it on anything else.
+simple and can be written by hand.
 
 ## License
 
