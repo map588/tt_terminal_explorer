@@ -129,6 +129,12 @@ stream:
 2. Print `ok <name>\n` yourself, then read and write bytes freely.
 3. End with a final `ok done` or `err <token>` line.
 
+Do not read with a plain blocking `getchar()` inside a session. It
+blocks forever after the port closes mid-session, and the stuck
+session then eats the next connection's commands as session input.
+Poll with `getchar_timeout_us()` and abort the session when
+`stdio_usb_connected()` goes false.
+
 The UI's serial layer supports this: call
 `link.set_raw_sink(callback)` before the session, feed keys or
 pastes with `link.write_raw(...)`, and watch for the final line to
