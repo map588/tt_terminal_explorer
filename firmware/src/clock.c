@@ -5,7 +5,12 @@
 #include "hardware/pio.h"
 #include "pico/stdlib.h"
 
+#include "ext.h"
 #include "tt_pins.h"
+
+__attribute__((weak)) void ext_clock_changed(uint32_t hz) {
+    (void)hz;
+}
 
 uint32_t clk_hz = 1000000u;
 clk_mode_t clk_mode = CLK_STEP; /* main() calls asic_clk_set_hz() at boot */
@@ -118,6 +123,7 @@ bool asic_clk_set_hz(uint32_t hz, uint32_t *actual) {
 
     clk_hz = hz;
     clk_mode = CLK_RUN;
+    ext_clock_changed(hz);
     if (actual) /* true output frequency, nearest integer */
         *actual = (uint32_t)(((uint64_t)sys + period / 2) / period);
     return true;

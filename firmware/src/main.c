@@ -13,13 +13,17 @@
 #include "board.h"
 #include "clock.h"
 #include "commands.h"
+#include "ext.h"
 
 #define BOOT_CLK_HZ 1000000u
 #define WAIT_FOR_USB 1
 
+__attribute__((weak)) void ext_init(void) {}
+
 int main(void) {
     stdio_init_all();
     board_pins_init();
+    ext_init();
 
 #if WAIT_FOR_USB
     while (!stdio_usb_connected())

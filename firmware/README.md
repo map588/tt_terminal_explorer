@@ -41,6 +41,16 @@ The firmware waits for the USB serial port to open.
 For the v3 *Alpha* prototype board add `-DTT_DBV3_ALPHA` (different
 GPIO map, see `include/tt_pins.h`).
 
+## Extending
+
+The core never needs edits to be extended. `include/ext.h` declares
+seven weak hooks: an extra command table, a boot hook, appended
+hello/status fields, a clock-changed callback, a design-changed
+callback, and a safe-profile callback. `core.cmake` builds the core as a library, so another
+repo can consume it as a submodule and add its own targets. See
+[docs/extending.md](../docs/extending.md) for skeletons and the
+worked example.
+
 ## Carrier detection
 
 At boot the firmware probes what sits on top of the demo board,

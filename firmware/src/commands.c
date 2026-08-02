@@ -17,6 +17,7 @@
 #include "board.h"
 #include "clock.h"
 #include "commands.h"
+#include "ext.h"
 #include "tt_pins.h"
 
 #define PROTO_VERSION 2u
@@ -31,7 +32,39 @@ static uint8_t ui_value;
 static uint8_t uio_dir_mask; /* 1 = MCU drives the pad */
 static uint8_t uio_out_value;
 
-static char reply[96]; /* handlers put their "ok" payload here */
+char tt_reply[TT_REPLY_CAP]; /* handlers put their "ok" payload here */
+
+/* Weak defaults for the extension hooks this file calls. A project
+ * overrides them by defining the same functions (see ext.h). */
+__attribute__((weak)) const struct cmd *ext_commands(size_t *count) {
+    *count = 0;
+    return NULL;
+}
+__attribute__((weak)) void ext_hello(char *out, size_t cap) {
+    (void)out;
+    (void)cap;
+}
+__attribute__((weak)) void ext_status(char *out, size_t cap) {
+    (void)out;
+    (void)cap;
+}
+__attribute__((weak)) void ext_design_changed(unsigned addr) {
+    (void)addr;
+}
+
+/* Append the hook's " key=value" fields to tt_reply[]. The core
+ * writes the separating space and removes it again when the hook
+ * wrote nothing, so hooks only write "key=value" text. */
+static void ext_append(void (*hook)(char *, size_t)) {
+    size_t used = strlen(tt_reply);
+    if (used + 2 >= TT_REPLY_CAP)
+        return;
+    tt_reply[used] = ' ';
+    tt_reply[used + 1] = 0;
+    hook(tt_reply + used + 1, TT_REPLY_CAP - used - 1);
+    if (tt_reply[used + 1] == 0)
+        tt_reply[used] = 0;
+}
 
 /* pins_safe() in board.c does not know this file's mirror state;
  * reset it together whenever the safe profile is applied. */
@@ -45,7 +78,7 @@ static void apply_safe_profile(void) {
 
 /* ---- argument parsing ---- */
 
-static bool parse_u32(const char *s, uint32_t *out) {
+bool parse_u32(const char *s, uint32_t *out) {
     char *end;
     unsigned long v = strtoul(s, &end, 10);
     if (end == s || *end)
@@ -54,7 +87,7 @@ static bool parse_u32(const char *s, uint32_t *out) {
     return true;
 }
 
-static bool parse_hex8(const char *s, uint8_t *out) {
+bool parse_hex8(const char *s, uint8_t *out) {
     char *end;
     unsigned long v = strtoul(s, &end, 16);
     if (end == s || *end || v > 255)
@@ -63,7 +96,7 @@ static bool parse_hex8(const char *s, uint8_t *out) {
     return true;
 }
 
-static uint8_t read_byte(uint base) {
+uint8_t read_byte(unsigned base) {
     uint8_t v = 0;
     for (uint i = 0; i < 8; i++)
         v |= (uint8_t)(gpio_get(base + i) << i);
@@ -71,25 +104,27 @@ static uint8_t read_byte(uint base) {
 }
 
 /* ---- command handlers ---- */
-/* A handler returns NULL for success (payload, if any, in reply[]) or
+/* A handler returns NULL for success (payload, if any, in tt_reply[]) or
  * an error token. */
 
 static const char *cmd_hello(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    sprintf(reply, "tt-explorer %u shuttle=%s", PROTO_VERSION, SHUTTLE_NAME);
+    sprintf(tt_reply, "tt-explorer %u shuttle=%s", PROTO_VERSION, SHUTTLE_NAME);
+    ext_append(ext_hello);
     return NULL;
 }
 
 static const char *cmd_status(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    sprintf(reply,
+    sprintf(tt_reply,
             "design=%d mode=%s freq=%lu ui=%02x uidrv=%d uiod=%02x"
             " carrier=%s",
             current_design, clk_mode == CLK_RUN ? "run" : "step",
             (unsigned long)clk_hz, ui_value, ui_driven ? 1 : 0,
             uio_dir_mask, carrier_str());
+    ext_append(ext_status);
     return NULL;
 }
 
@@ -99,7 +134,7 @@ static const char *cmd_freq(int argc, char **argv) {
         return "bad-arg";
     if (!asic_clk_set_hz(hz, &actual))
         return "range";
-    sprintf(reply, "%lu", (unsigned long)actual);
+    sprintf(tt_reply, "%lu", (unsigned long)actual);
     return NULL;
 }
 
@@ -118,7 +153,7 @@ static const char *cmd_step(int argc, char **argv) {
         return "range";
     if (!asic_clk_step(n))
         return "mode";
-    sprintf(reply, "%lu", (unsigned long)n);
+    sprintf(tt_reply, "%lu", (unsigned long)n);
     return NULL;
 }
 
@@ -126,7 +161,7 @@ static const char *cmd_resume(int argc, char **argv) {
     (void)argc;
     (void)argv;
     asic_clk_resume();
-    sprintf(reply, "%lu", (unsigned long)clk_hz);
+    sprintf(tt_reply, "%lu", (unsigned long)clk_hz);
     return NULL;
 }
 
@@ -152,7 +187,8 @@ static const char *cmd_design(int argc, char **argv) {
     tt_select_design(n);
     reset_pulse();
     current_design = (int)n;
-    sprintf(reply, "%lu", (unsigned long)n);
+    ext_design_changed((unsigned)n);
+    sprintf(tt_reply, "%lu", (unsigned long)n);
     return NULL;
 }
 
@@ -177,7 +213,7 @@ static const char *cmd_reset(int argc, char **argv) {
  * drive (the official firmware calls this ASIC_MANUAL_INPUTS). */
 static const char *cmd_ui(int argc, char **argv) {
     if (argc == 1) { /* read the pad levels (useful when released) */
-        sprintf(reply, "%02x", read_byte(TT_GPIO_UI_BASE));
+        sprintf(tt_reply, "%02x", read_byte(TT_GPIO_UI_BASE));
         return NULL;
     }
     if (argc == 2 && !strcmp(argv[1], "off")) {
@@ -202,14 +238,14 @@ static const char *cmd_ui(int argc, char **argv) {
 static const char *cmd_uo(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    sprintf(reply, "%02x", read_byte(TT_GPIO_UO_BASE));
+    sprintf(tt_reply, "%02x", read_byte(TT_GPIO_UO_BASE));
     return NULL;
 }
 
 static const char *cmd_uio(int argc, char **argv) {
     (void)argc;
     (void)argv;
-    sprintf(reply, "%02x", read_byte(TT_GPIO_UIO_BASE));
+    sprintf(tt_reply, "%02x", read_byte(TT_GPIO_UIO_BASE));
     return NULL;
 }
 
@@ -231,7 +267,7 @@ static const char *cmd_uiod(int argc, char **argv) {
     } else if (argc != 1) {
         return "bad-arg";
     }
-    sprintf(reply, "%02x", uio_dir_mask);
+    sprintf(tt_reply, "%02x", uio_dir_mask);
     return NULL;
 }
 
@@ -249,11 +285,7 @@ static const char *cmd_uiow(int argc, char **argv) {
 
 static const char *cmd_help(int argc, char **argv);
 
-static const struct cmd {
-    const char *name;
-    const char *(*fn)(int argc, char **argv);
-    const char *help;
-} cmds[] = {
+static const struct cmd cmds[] = {
     {"hello", cmd_hello, "hello              -> ok tt-explorer <ver> shuttle=<name>"},
     {"status", cmd_status, "status             -> ok design= mode= freq= ui= uiod="},
     {"freq", cmd_freq, "freq <hz>          set clock, 10 Hz .. clk_sys/2"},
@@ -275,6 +307,25 @@ static const char *cmd_help(int argc, char **argv) {
     (void)argv;
     for (uint i = 0; i < count_of(cmds); i++)
         printf("# %s\n", cmds[i].help);
+    size_t n;
+    const struct cmd *ext = ext_commands(&n);
+    for (size_t i = 0; i < n; i++)
+        printf("# %s\n", ext[i].help);
+    return NULL;
+}
+
+/* The core table first, then the extension table. */
+static const struct cmd *find_cmd(const char *name) {
+    for (uint i = 0; i < count_of(cmds); i++) {
+        if (!strcmp(name, cmds[i].name))
+            return &cmds[i];
+    }
+    size_t n;
+    const struct cmd *ext = ext_commands(&n);
+    for (size_t i = 0; i < n; i++) {
+        if (!strcmp(name, ext[i].name))
+            return &ext[i];
+    }
     return NULL;
 }
 
@@ -322,23 +373,17 @@ void command_loop(void) {
         if (argc == 0)
             continue;
 
-        const struct cmd *c = NULL;
-        for (uint i = 0; i < count_of(cmds); i++) {
-            if (!strcmp(argv[0], cmds[i].name)) {
-                c = &cmds[i];
-                break;
-            }
-        }
+        const struct cmd *c = find_cmd(argv[0]);
         if (!c) {
             printf("err unknown\n");
             continue;
         }
-        reply[0] = 0;
+        tt_reply[0] = 0;
         const char *err = c->fn(argc, argv);
         if (err)
             printf("err %s\n", err);
-        else if (reply[0])
-            printf("ok %s\n", reply);
+        else if (tt_reply[0])
+            printf("ok %s\n", tt_reply);
         else
             printf("ok\n");
         stdio_flush();
