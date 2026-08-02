@@ -14,7 +14,7 @@ this protocol, and a bare terminal (`tio`, `screen`) works too.
 | Command | Effect |
 |---|---|
 | `hello` | `ok tt-explorer 2 shuttle=ttsky25b`: protocol version and shuttle name (the TUI loads the matching index) |
-| `status` | design, clock mode/freq, pin state (`uidrv=0` when ui is released) |
+| `status` | design, clock mode/freq, pin state (`uidrv=0` when ui is released), `carrier=asic\|fpga\|none` |
 | `freq <hz>` | free-running clock, 1 Hz – clk_sys/2 (75 MHz), made by PIO with one-sys-cycle resolution. The true output frequency never exceeds the request; the reply reports it. |
 | `stop` / `step [n]` / `resume` | park the clock low, pulse it n times, restart the clock |
 | `design <n>` | safe pin profile, mux-select design n, reset pulse |
@@ -40,6 +40,15 @@ The firmware waits for the USB serial port to open.
 
 For the v3 *Alpha* prototype board add `-DTT_DBV3_ALPHA` (different
 GPIO map, see `include/tt_pins.h`).
+
+## Carrier detection
+
+At boot the firmware probes what sits on top of the demo board,
+with the same strategy as the official MicroPython SDK: the FPGA
+breakout pulls the MNG07 management pin high, and a chip carrier
+pulls the mux ctrl lines low. The result is in the boot banner and
+in the `status` reply. The probe runs once, before the ctrl pins
+become outputs.
 
 ## Pin safety
 

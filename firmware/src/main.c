@@ -29,5 +29,6 @@ int main(void) {
     asic_clk_set_hz(BOOT_CLK_HZ, NULL);
 
     printf("# tt-explorer host, type 'help'\n");
+    printf("# carrier: %s\n", carrier_str());
     command_loop();
 }

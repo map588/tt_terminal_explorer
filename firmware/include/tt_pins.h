@@ -20,6 +20,9 @@
 #define TT_GPIO_UIO_BASE 25 /* uio[0..7]   = GPIO 25..32 */
 #define TT_PIN_PROJ_CLK 16
 #define TT_PIN_PROJ_NRST 14
+/* MNG07: the FPGA breakout pulls this management pin high. The
+ * Alpha board has no MNG pins. */
+#define TT_PIN_MNG_FPGA_DETECT 10
 #endif
 
 /* Project mux control (same on both board revisions). */

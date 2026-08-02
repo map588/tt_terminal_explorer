@@ -42,6 +42,8 @@ The project has two parts:
 - Set any clock from 1 Hz to 75 MHz (PIO-generated, one-cycle
   resolution, never above your requested frequency), or stop the clock and step it
   one pulse at a time.
+- Detect what sits on the board at boot (chip carrier, FPGA
+  breakout, or nothing) and show it in the UI.
 
 ## What you need
 

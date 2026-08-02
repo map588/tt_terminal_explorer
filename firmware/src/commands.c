@@ -82,10 +82,11 @@ static const char *cmd_status(int argc, char **argv) {
     (void)argc;
     (void)argv;
     sprintf(reply,
-            "design=%d mode=%s freq=%lu ui=%02x uidrv=%d uiod=%02x",
+            "design=%d mode=%s freq=%lu ui=%02x uidrv=%d uiod=%02x"
+            " carrier=%s",
             current_design, clk_mode == CLK_RUN ? "run" : "step",
             (unsigned long)clk_hz, ui_value, ui_driven ? 1 : 0,
-            uio_dir_mask);
+            uio_dir_mask, carrier_str());
     return NULL;
 }
 

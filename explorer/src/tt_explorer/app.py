@@ -134,6 +134,7 @@ class TTExplorerApp(App):
         self._ui_driving = True
         self._clk_running = True
         self._steps = 0
+        self._carrier: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -187,6 +188,7 @@ class TTExplorerApp(App):
             self._log(f"! cannot open {ports[0]}: {exc}")
             return
         self._log(f"# connected to {ports[0]}")
+        self._carrier = None
         reply = await self.send("hello")
         if reply and reply.ok:
             hello = protocol.parse_hello(reply.payload)
@@ -234,6 +236,7 @@ class TTExplorerApp(App):
         if not (reply and reply.ok):
             return
         st = protocol.parse_status(reply.payload)
+        self._show_carrier(st.get("carrier"))
         self._clk_running = st["mode"] == "run"
         self._freq = st["freq"]
         if st["design"] >= 0:
@@ -242,6 +245,16 @@ class TTExplorerApp(App):
         if "uidrv" in st:
             self._ui_driving = bool(st["uidrv"])
             self.query_one(UiPanel).set_bus(self._ui_driving)
+
+    def _show_carrier(self, carrier: str | None) -> None:
+        """Subtitle tag from the firmware's boot probe. Old firmware
+        sends no carrier field, then nothing is shown."""
+        if carrier is None or carrier == self._carrier:
+            return
+        self._carrier = carrier
+        self.sub_title = f"{self.sub_title} · carrier: {carrier.upper()}"
+        if carrier == "none":
+            self._log("! no carrier detected. Is a chip mounted?")
 
     async def _poll(self) -> None:
         link = self.link
