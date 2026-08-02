@@ -89,3 +89,21 @@ def test_uio_direction_hint():
     assert hint("segment output g") == "out"
     assert hint("spi_cs") is None
     assert hint("") is None
+
+
+def test_upy_translate():
+    from tt_explorer.upy_link import UpyLink
+    link = UpyLink.__new__(UpyLink)
+    link._last_freq = 0
+    assert link._translate("hello") == "_tt_hello()"
+    assert link._translate("status") == "_tt_status()"
+    assert link._translate("design 448") == "_tt_design(448)"
+    assert "clock_project_PWM(1000)" in link._translate("freq 1000")
+    assert link._last_freq == 1000
+    assert "clock_project_PWM(1000)" in link._translate("resume")
+    assert link._translate("step 10") == "_tt_step(10)"
+    assert link._translate("ui ff") == "_tt_ui(255)"
+    assert "ASIC_MANUAL_INPUTS" in link._translate("ui off")
+    assert "uio_oe_pico.value = 240" in link._translate("uiod f0")
+    assert link._translate("ui zz") is None
+    assert link._translate("bogus") is None

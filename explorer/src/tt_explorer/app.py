@@ -19,7 +19,8 @@ from textual.widgets import (
 
 from . import index, protocol
 from .index import Project
-from .serial_link import SerialLink, find_ports
+from .serial_link import SerialLink, find_ports, is_micropython
+from .upy_link import UpyLink
 from .widgets import (
     ClockPanel,
     ConsolePane,
@@ -176,7 +177,12 @@ class TTExplorerApp(App):
             self._log("! no serial port found. Is the board plugged in?")
             return
         try:
-            self.link = SerialLink(ports[0], on_line=self._log)
+            if is_micropython(ports[0]):
+                self._log("# stock MicroPython firmware detected, "
+                          "driving the ttboard SDK over the raw REPL")
+                self.link = UpyLink(ports[0], on_line=self._log)
+            else:
+                self.link = SerialLink(ports[0], on_line=self._log)
         except OSError as exc:
             self._log(f"! cannot open {ports[0]}: {exc}")
             return

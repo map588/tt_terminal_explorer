@@ -21,6 +21,7 @@ from serial.tools import list_ports
 from .protocol import Reply, is_info_line, is_reply_line, parse_reply
 
 RPI_VID = 0x2E8A
+UPY_PID = 0x0005  # MicroPython's USB product id on RP2 boards
 BAUD = 115200  # ignored by USB CDC, required by pyserial
 
 
@@ -29,6 +30,15 @@ def find_ports() -> list[str]:
     if not ports:
         ports = sorted(glob.glob("/dev/tty.usbmodem*"))
     return ports
+
+
+def is_micropython(port: str) -> bool:
+    """True when the port belongs to a MicroPython board (the stock
+    Tiny Tapeout firmware), by USB product id."""
+    for p in list_ports.comports():
+        if p.device == port:
+            return p.vid == RPI_VID and p.pid == UPY_PID
+    return False
 
 
 @dataclass
