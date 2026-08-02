@@ -121,11 +121,15 @@ bool asic_clk_set_hz(uint32_t hz, uint32_t *actual) {
     pio_sm_exec(CLK_PIO, CLK_SM, pio_encode_jmp(entry) | side(0));
     pio_sm_set_enabled(CLK_PIO, CLK_SM, true);
 
-    clk_hz = hz;
+    /* Store the true output frequency (nearest integer), not the
+     * request. status, resume, and the clock-change hook then all
+     * report and compute with the same number that freq replied. */
+    uint32_t achieved = (uint32_t)(((uint64_t)sys + period / 2) / period);
+    clk_hz = achieved;
     clk_mode = CLK_RUN;
-    ext_clock_changed(hz);
-    if (actual) /* true output frequency, nearest integer */
-        *actual = (uint32_t)(((uint64_t)sys + period / 2) / period);
+    ext_clock_changed(achieved);
+    if (actual)
+        *actual = achieved;
     return true;
 }
 
