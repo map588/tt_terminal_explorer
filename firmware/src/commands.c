@@ -288,7 +288,7 @@ static const char *cmd_help(int argc, char **argv);
 static const struct cmd cmds[] = {
     {"hello", cmd_hello, "hello              -> ok tt-explorer <ver> shuttle=<name>"},
     {"status", cmd_status, "status             -> ok design= mode= freq= ui= uiod="},
-    {"freq", cmd_freq, "freq <hz>          set clock, 10 Hz .. clk_sys/2"},
+    {"freq", cmd_freq, "freq <hz>          set clock, 1 Hz .. clk_sys/2"},
     {"stop", cmd_stop, "stop               park clock low, step mode"},
     {"step", cmd_step, "step [n]           n clock pulses (step mode only)"},
     {"resume", cmd_resume, "resume             back to run mode at last freq"},

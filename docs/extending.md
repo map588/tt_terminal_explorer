@@ -6,8 +6,7 @@ CMakeLists builds it together with the core.
 
 ## What the firmware does on its own
 
-Read this first. Every extension point below is a moment in this
-story, and none of them make sense without it.
+Read this first. Each hook below is a moment in this sequence.
 
 At boot the firmware puts the design pins in a neutral state: it
 drives the design's 8 inputs low, releases the 8 bidirectional
@@ -26,10 +25,9 @@ prints one `ok ...` or `err ...` reply:
 - `hello` and `status` are one-line reports the UI reads.
 
 That is complete. You can select, clock, and probe any shuttle
-design with zero extension code. An extension adds conveniences
-for one specific design on top: a loader, a self-test, a
-higher-level command that drives the pins in your design's own
-terms.
+design with zero extension code. An extension adds commands for
+one specific design: a loader, a self-test, a command that drives
+the pins in your design's own terms.
 
 ## Start from the example
 
@@ -86,15 +84,14 @@ in `clock.h`.
 ## The hooks: empty slots, not overrides
 
 `firmware/include/ext.h` declares seven hooks. Every one has an
-empty default. Define none of them and nothing is missing; the
-firmware above still works in full. Each hook is a fixed moment in
-the story where your code can run. Define only the ones your
-project needs. Most projects need one.
+empty default. Define none of them and nothing is missing. Each
+hook is a fixed moment in the sequence above where your code can
+run. Define only the ones your project needs. Most projects need
+one.
 
 **`ext_commands`** runs when a command line arrives, and on
-`help`. Need it if you add commands, which is the whole point for
-most projects. Return your command table; the dispatcher and
-`help` pick it up. The skeleton above is the complete pattern.
+`help`. Need it if you add commands. Return your command table.
+The skeleton above is the complete pattern.
 
 **`ext_init`** runs once at boot, before the command loop. Need it
 if your commands depend on hardware that must be set up once, for
@@ -107,29 +104,30 @@ achieved frequency. Need it if your host code holds delays
 measured in ASIC clock cycles: recompute them here. If it does
 not, skip it.
 
-**`ext_design_changed`** runs after `design` selected and reset a
-design. Need it if one specific design wants its own pin setup or
-state: check the address, apply your profile. The neutral state is
-already applied, so for every other design you do nothing.
+**`ext_design_changed`** runs after the `design` command selects
+and resets a design. Need it if one specific design wants its own
+pin setup: check the address, apply your profile. The neutral
+state is already applied, so for every other design you do
+nothing.
 
 **`ext_release_pins`** runs at the end of the core's
 reset-to-neutral (boot, and before every design switch). The core
 can only neutralize pins it knows about. Need it if your extension
 leaves anything driving a design pin between commands, for example
-a PWM you aimed at a design input: stop it here, so it cannot
-fight the next design. If you drive nothing outside your own
-commands, skip it.
+a PWM aimed at a design input. Stop it here, so it cannot fight
+the next design. If you drive nothing outside your own commands,
+skip it.
 
 **`ext_hello`** and **`ext_status`** run while those two commands
 build their one-line replies. Need them if a UI must detect your
 firmware variant (`hello`) or show extension state (`status`).
-Write `"key=value"` fields; the core adds the separating space.
+Write `key=value` fields. The core adds the separating space.
 
-Two things to know about how the override works:
+How the override works:
 
 - Include `ext.h` in the file that defines your hooks. A wrong
   signature is then a compile error.
-- A wrong NAME is not: a misspelled hook compiles clean and never
+- A wrong name is not: a misspelled hook compiles clean and never
   runs. After a build, check the `help` and `hello` output on the
   port before you debug anything deeper.
 
@@ -177,7 +175,7 @@ Poll with `getchar_timeout_us()` and abort the session when
 The UI's serial layer supports raw sessions: call
 `link.set_raw_sink(callback)` before the session, feed keys or
 pastes with `link.write_raw(...)`, and watch for the final line to
-restore normal polling. Raw sessions need the C firmware; the stock
+restore normal polling. Raw sessions need the C firmware. The stock
 MicroPython backend refuses them.
 
 ## Add a UI panel or tab
@@ -195,7 +193,7 @@ The UI is [Textual](https://textual.textualize.io). The pieces:
   tests in `explorer/tests/`, so start there if you extend the
   protocol.
 
-Two Textual habits that will save you time:
+Two Textual habits save time:
 
 - Any widget inside a 1-row container needs `border: none;
   height: 1;` in CSS, or it clips to an unlabeled rectangle.

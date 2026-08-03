@@ -189,15 +189,13 @@ The image is `build/tt_host.uf2`.
 
 ## Adapt it to your design
 
-This repo is a starter kit, and the stock firmware may already be
+This repo is a starter kit, and the unmodified firmware may be
 enough: it drives any design's pins and clock with no extension
 code. To add commands in your design's own terms, copy
 [firmware/example](firmware/example): a complete minimal extension
-you can build, flash, and rename. The UI side is one obvious place
-per addition: a panel, a tab, a protocol parser.
-[docs/extending.md](docs/extending.md) starts with what the
-firmware does on its own, then describes both sides, and links a
-complete worked example at the end.
+you can build, flash, and rename.
+[docs/extending.md](docs/extending.md) explains what the firmware
+does on its own, each hook, and the UI side.
 
 ![The project browser](docs/projects.svg)
 

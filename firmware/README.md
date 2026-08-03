@@ -15,7 +15,7 @@ this protocol, and a bare terminal (`tio`, `screen`) works too.
 |---|---|
 | `hello` | `ok tt-explorer 2 shuttle=ttsky25b`: protocol version and shuttle name (the TUI loads the matching index) |
 | `status` | design, clock mode/freq, pin state (`uidrv=0` when ui is released), `carrier=asic\|fpga\|none` |
-| `freq <hz>` | free-running clock, 1 Hz – clk_sys/2 (75 MHz), made by PIO with one-sys-cycle resolution. The true output frequency never exceeds the request; the reply reports it. |
+| `freq <hz>` | free-running clock, 1 Hz to clk_sys/2 (75 MHz), made by PIO with one-sys-cycle resolution. The true output frequency never exceeds the request, and the reply reports it. |
 | `stop` / `step [n]` / `resume` | park the clock low, pulse it n times, restart the clock |
 | `design <n>` | safe pin profile, mux-select design n, reset pulse |
 | `reset [1\|0]` | pulse (no arg), assert, or release the project reset. A pulse in step mode makes 10 clock edges while reset is low, for designs that need a clocked reset. |
@@ -43,13 +43,12 @@ GPIO map, see `include/tt_pins.h`).
 
 ## Extending
 
-You may not need an extension at all: the stock firmware already
-drives any design's pins and clock. When your design wants its own
-commands, the core never needs edits: one C file, built on the
-core with `tt_extension()` in a short CMakeLists. Start by copying
+You may not need an extension: this firmware already drives any
+design's pins and clock. To add commands, you write one C file and
+build it on the core with `tt_extension()`. Start by copying
 [example/](example/), a complete minimal project.
 [docs/extending.md](../docs/extending.md) explains what the
-firmware does on its own and then each hook.
+firmware does on its own, then each hook.
 
 ## Carrier detection
 
