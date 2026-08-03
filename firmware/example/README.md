@@ -22,8 +22,8 @@ blink 3     # the board LED blinks three times, reply: ok 3
 
 1. Copy this directory into your repo.
 2. Add the kit as a git submodule, for example at `kit/`.
-3. In `CMakeLists.txt`, point the two includes at the submodule:
-   `kit/firmware/preamble.cmake` and `kit/firmware/core.cmake`.
+3. In `CMakeLists.txt`, point the include at the submodule:
+   `kit/firmware/kit.cmake`.
 4. Rename `blink_ext.c` and put your commands in it.
 
 `docs/extending.md` in the kit describes the other hooks: run code

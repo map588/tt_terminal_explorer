@@ -177,6 +177,9 @@ class UpyLink:
     def set_raw_sink(self, sink) -> None:
         raise OSError("raw sessions need the tt_host firmware")
 
+    async def begin_raw(self, sink) -> None:
+        raise OSError("raw sessions need the tt_host firmware")
+
     def write_raw(self, text: str) -> None:
         raise OSError("raw sessions need the tt_host firmware")
 
@@ -324,7 +327,12 @@ class UpyLink:
         buf = b""
         while not self._closed:
             try:
-                data = self._ser.read(256)
+                # read(1) returns on the first byte; a bigger size
+                # would wait the full timeout for bytes that never
+                # come and delay every reply by that much.
+                data = self._ser.read(1)
+                if data and self._ser.in_waiting:
+                    data += self._ser.read(self._ser.in_waiting)
             except (OSError, serial.SerialException):
                 break
             if not data:

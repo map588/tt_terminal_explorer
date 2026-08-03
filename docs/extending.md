@@ -138,10 +138,9 @@ CMakeLists like this:
 
 ```cmake
 cmake_minimum_required(VERSION 3.13)
-include(kit/firmware/preamble.cmake)   # board + pico-sdk import
+include(kit/firmware/kit.cmake)   # board, pico-sdk, tt_extension()
 project(my_project C CXX ASM)
 pico_sdk_init()
-include(kit/firmware/core.cmake)       # tt_core + tt_extension()
 
 tt_extension(tt_host src/my_ext.c)
 ```
@@ -152,9 +151,10 @@ a normal `target_link_libraries(tt_host <library>)` line after the
 call. `pico_multicore`, `hardware_pwm`, `hardware_dma`, and the
 rest all work this way.
 
-To replace the main instead, use `add_executable` with your own
-main file and link `tt_core` yourself. `TT_CORE_MAIN` holds the
-path of the kit's main when you want to reference it.
+To replace the main instead, call `tt_core_library()`, then use
+`add_executable` with your own main file and link `tt_core`.
+`TT_CORE_MAIN` holds the path of the kit's main when you want to
+reference it.
 
 ## Interactive sessions (raw streams)
 
@@ -173,7 +173,7 @@ Poll with `getchar_timeout_us()` and abort the session when
 `stdio_usb_connected()` goes false.
 
 The UI's serial layer supports raw sessions: call
-`link.set_raw_sink(callback)` before the session, feed keys or
+`await link.begin_raw(callback)` before the session, feed keys or
 pastes with `link.write_raw(...)`, and watch for the final line to
 restore normal polling. Raw sessions need the C firmware. The stock
 MicroPython backend refuses them.
