@@ -136,7 +136,7 @@ This kit was extracted from
 a Brainf*ck computer on the same shuttle. Its firmware feeds the
 chip one instruction per clock pulse through a bit-banged
 handshake, mirrors the chip's program counter to stay in step,
-emulates the SPI RAM tape on the RP2350's second core, and works
+runs the execution engine on the RP2350's second core, and works
 around four silicon bugs at exact clock edges. None of that fits
 through a Python REPL at millisecond granularity.
 
