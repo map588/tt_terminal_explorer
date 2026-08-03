@@ -13,7 +13,12 @@
  * the function with the same signature in one of the project's own
  * sources and the linker picks it over the weak default.
  *
- * See docs/extending.md for the pattern and a worked example.
+ * Most projects define only ext_commands, and ext_init when
+ * something must start at boot. The rest exist for designs that
+ * need pin or timing behavior tied to bench events.
+ *
+ * See docs/extending.md for the pattern and firmware/example for a
+ * complete minimal project.
  */
 
 /* Extra rows for the command table. Return the array and put its
@@ -26,15 +31,11 @@ const struct cmd *ext_commands(size_t *count);
  * connected yet, so printed output is lost. */
 void ext_init(void);
 
-/* Write extra "key=value" fields for the hello / status reply into
- * out (snprintf, cap bytes). The core puts the separating space in
- * front, so do not start with one. Separate multiple fields with
- * single spaces. */
-void ext_hello(char *out, size_t cap);
-void ext_status(char *out, size_t cap);
+/* ---- bench events ---- */
 
-/* The project clock changed (the freq or resume command). Recompute
- * timings that follow the clock here. */
+/* The project clock changed (the freq or resume command). The value
+ * is the achieved frequency. Recompute timings that follow the
+ * clock here. */
 void ext_clock_changed(uint32_t hz);
 
 /* A design was selected and reset. The safe pin profile is already
@@ -45,3 +46,12 @@ void ext_design_changed(unsigned addr);
  * Release or park extension-owned hardware here, for example a
  * second-core peripheral that drives shared pins. */
 void ext_pins_safe(void);
+
+/* ---- reply fields ---- */
+
+/* Write extra "key=value" fields for the hello / status reply into
+ * out (snprintf, cap bytes). The core puts the separating space in
+ * front, so do not start with one. Separate multiple fields with
+ * single spaces. */
+void ext_hello(char *out, size_t cap);
+void ext_status(char *out, size_t cap);

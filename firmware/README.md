@@ -43,13 +43,11 @@ GPIO map, see `include/tt_pins.h`).
 
 ## Extending
 
-The core never needs edits to be extended. `include/ext.h` declares
-seven weak hooks: an extra command table, a boot hook, appended
-hello/status fields, a clock-changed callback, a design-changed
-callback, and a safe-profile callback. `core.cmake` builds the core as a library, so another
-repo can consume it as a submodule and add its own targets. See
-[docs/extending.md](../docs/extending.md) for skeletons and the
-worked example.
+The core never needs edits to be extended: one C file with your
+commands, built on the core with `tt_extension()` in a short
+CMakeLists. Start by copying [example/](example/), a complete
+minimal project. [docs/extending.md](../docs/extending.md)
+describes the seven hooks and the larger patterns.
 
 ## Carrier detection
 

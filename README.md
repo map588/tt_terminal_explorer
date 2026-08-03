@@ -189,11 +189,12 @@ The image is `build/tt_host.uf2`.
 
 ## Adapt it to your design
 
-This repo is a starter kit. The firmware command table and the UI
-panels are both single obvious places to add things: extra
-commands, a custom tab, a design-specific debugger.
-[docs/extending.md](docs/extending.md) has code skeletons for each,
-and a link to a complete worked example.
+This repo is a starter kit. To add your own firmware commands,
+copy [firmware/example](firmware/example): a complete minimal
+extension you can build, flash, and rename. The UI side is one
+obvious place per addition: a panel, a tab, a protocol parser.
+[docs/extending.md](docs/extending.md) describes both sides, and
+links a complete worked example at the end.
 
 ![The project browser](docs/projects.svg)
 
