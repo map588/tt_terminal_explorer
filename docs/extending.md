@@ -4,6 +4,33 @@ The firmware is built to be extended without edits to its core
 files. You write one C file with your commands, and a short
 CMakeLists builds it together with the core.
 
+## What the firmware does on its own
+
+Read this first. Every extension point below is a moment in this
+story, and none of them make sense without it.
+
+At boot the firmware puts the design pins in a neutral state: it
+drives the design's 8 inputs low, releases the 8 bidirectional
+pins, and listens on the 8 outputs. Nothing fights the design.
+Then it waits for USB serial, starts the project clock at 1 MHz,
+and enters a command loop.
+
+The loop is the whole firmware. It reads one line, runs it, and
+prints one `ok ...` or `err ...` reply:
+
+- `design 5` returns the pins to the neutral state, walks the mux
+  to design 5, and pulses reset.
+- `freq 200000`, `stop`, `step`, `resume` control the project
+  clock.
+- `ui 0f`, `uo`, `uio`, `uiod`, `uiow` drive and read the pins.
+- `hello` and `status` are one-line reports the UI reads.
+
+That is complete. You can select, clock, and probe any shuttle
+design with zero extension code. An extension adds conveniences
+for one specific design on top: a loader, a self-test, a
+higher-level command that drives the pins in your design's own
+terms.
+
 ## Start from the example
 
 `firmware/example` is a complete extension: one `blink` command,
@@ -56,21 +83,47 @@ arguments, `read_byte(TT_GPIO_UO_BASE)` style bus reads (all in
 `board.h`, `asic_clk_set_hz` / `asic_clk_stop` / `asic_clk_step`
 in `clock.h`.
 
-## The other hooks
+## The hooks: empty slots, not overrides
 
-`firmware/include/ext.h` declares seven hooks. The core defines an
-empty weak default for each, so a project overrides only what it
-needs. Most projects stop at `ext_commands`.
+`firmware/include/ext.h` declares seven hooks. Every one has an
+empty default. Define none of them and nothing is missing; the
+firmware above still works in full. Each hook is a fixed moment in
+the story where your code can run. Define only the ones your
+project needs. Most projects need one.
 
-| Hook | Called | Use it for |
-|---|---|---|
-| `ext_commands(&count)` | on dispatch and `help` | your own command table rows |
-| `ext_init()` | once at boot | start second-core work, extra hardware |
-| `ext_clock_changed(hz)` | after `freq`/`resume` | host-side timing that follows the project clock |
-| `ext_design_changed(addr)` | after `design` | a pin profile for one specific design |
-| `ext_pins_safe()` | end of every safe profile | park extension hardware that shares pins |
-| `ext_hello(out, cap)` | in `hello` | extra "key=value" reply fields |
-| `ext_status(out, cap)` | in `status` | extra "key=value" reply fields |
+**`ext_commands`** runs when a command line arrives, and on
+`help`. Need it if you add commands, which is the whole point for
+most projects. Return your command table; the dispatcher and
+`help` pick it up. The skeleton above is the complete pattern.
+
+**`ext_init`** runs once at boot, before the command loop. Need it
+if your commands depend on hardware that must be set up once, for
+example a PWM slice, an I2C peripheral, or a DMA channel. USB
+serial is not connected yet, so printed output is lost. Most
+projects skip it.
+
+**`ext_clock_changed`** runs after `freq` or `resume`, with the
+achieved frequency. Need it if your host code holds delays
+measured in ASIC clock cycles: recompute them here. If it does
+not, skip it.
+
+**`ext_design_changed`** runs after `design` selected and reset a
+design. Need it if one specific design wants its own pin setup or
+state: check the address, apply your profile. The neutral state is
+already applied, so for every other design you do nothing.
+
+**`ext_release_pins`** runs at the end of the core's
+reset-to-neutral (boot, and before every design switch). The core
+can only neutralize pins it knows about. Need it if your extension
+leaves anything driving a design pin between commands, for example
+a PWM you aimed at a design input: stop it here, so it cannot
+fight the next design. If you drive nothing outside your own
+commands, skip it.
+
+**`ext_hello`** and **`ext_status`** run while those two commands
+build their one-line replies. Need them if a UI must detect your
+firmware variant (`hello`) or show extension state (`status`).
+Write `"key=value"` fields; the core adds the separating space.
 
 Two things to know about how the override works:
 

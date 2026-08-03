@@ -8,50 +8,55 @@
 /*
  * Extension hooks.
  *
- * The core defines an empty weak default for each hook, next to its
- * call site. A project overrides only the hooks it needs: define
- * the function with the same signature in one of the project's own
- * sources and the linker picks it over the weak default.
+ * Every hook has an empty weak default. The firmware is complete
+ * without them: it can select, clock, and probe any design on its
+ * own. Define only the hooks your project needs, in your own
+ * source file, with the same signature; the linker picks your
+ * definition over the empty one.
  *
- * Most projects define only ext_commands, and ext_init when
- * something must start at boot. The rest exist for designs that
- * need pin or timing behavior tied to bench events.
- *
- * See docs/extending.md for the pattern and firmware/example for a
- * complete minimal project.
+ * docs/extending.md starts with what the firmware does on its own,
+ * so each hook below reads as a moment in that story.
  */
 
-/* Extra rows for the command table. Return the array and put its
- * length in *count. The dispatcher and `help` walk it after the
- * core table. */
+/* When: a command line arrives, and on `help`.
+ * Need it if: you add commands. This is the hook most projects
+ * define, and often the only one. Return your command table and
+ * put its length in *count. */
 const struct cmd *ext_commands(size_t *count);
 
-/* Runs once at boot, after the pins and the carrier probe, before
- * the command loop. Start second-core work here. USB serial is not
- * connected yet, so printed output is lost. */
+/* When: once at boot, before the command loop.
+ * Need it if: your commands depend on hardware that must be set
+ * up once (a PWM slice, an I2C peripheral, a DMA channel). USB
+ * serial is not connected yet, so printed output is lost. */
 void ext_init(void);
 
 /* ---- bench events ---- */
 
-/* The project clock changed (the freq or resume command). The value
- * is the achieved frequency. Recompute timings that follow the
- * clock here. */
+/* When: after `freq` or `resume`, with the achieved frequency.
+ * Need it if: your host code holds delays measured in ASIC clock
+ * cycles; recompute them here. Otherwise skip. */
 void ext_clock_changed(uint32_t hz);
 
-/* A design was selected and reset. The safe pin profile is already
- * applied; reapply a design-specific profile here. */
+/* When: after `design` selected and reset a design.
+ * Need it if: one specific design needs its own pin profile or
+ * state; check the address and apply it here. The neutral profile
+ * is already applied. */
 void ext_design_changed(unsigned addr);
 
-/* The safe pin profile was applied (boot and every design change).
- * Release or park extension-owned hardware here, for example a
- * second-core peripheral that drives shared pins. */
-void ext_pins_safe(void);
+/* When: at the end of pins_safe(), the core's reset-to-neutral for
+ * the design pins. That runs at boot and before every design
+ * switch.
+ * Need it if: your extension leaves anything driving a design pin
+ * between commands, for example a PWM aimed at a design input.
+ * The core resets the pins it knows; you stop what you added. */
+void ext_release_pins(void);
 
 /* ---- reply fields ---- */
 
-/* Write extra "key=value" fields for the hello / status reply into
- * out (snprintf, cap bytes). The core puts the separating space in
- * front, so do not start with one. Separate multiple fields with
- * single spaces. */
+/* When: while `hello` / `status` build their one-line replies.
+ * Need it if: a UI must detect your firmware variant (hello) or
+ * show extension state (status). Write "key=value" fields into out
+ * (snprintf, cap bytes). The core puts the separating space in
+ * front, so do not start with one. */
 void ext_hello(char *out, size_t cap);
 void ext_status(char *out, size_t cap);

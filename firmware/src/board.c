@@ -4,7 +4,7 @@
 #include "ext.h"
 #include "tt_pins.h"
 
-__attribute__((weak)) void ext_pins_safe(void) {}
+__attribute__((weak)) void ext_release_pins(void) {}
 
 carrier_t carrier = CARRIER_NONE;
 
@@ -74,7 +74,7 @@ void pins_safe(void) {
     }
     for (uint i = 0; i < 8; i++)
         gpio_init(TT_GPIO_UO_BASE + i);
-    ext_pins_safe();
+    ext_release_pins();
 }
 
 /* Mux sequence per tt-micropython-firmware project_mux.py. */

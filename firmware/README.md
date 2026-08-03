@@ -43,11 +43,13 @@ GPIO map, see `include/tt_pins.h`).
 
 ## Extending
 
-The core never needs edits to be extended: one C file with your
-commands, built on the core with `tt_extension()` in a short
-CMakeLists. Start by copying [example/](example/), a complete
-minimal project. [docs/extending.md](../docs/extending.md)
-describes the seven hooks and the larger patterns.
+You may not need an extension at all: the stock firmware already
+drives any design's pins and clock. When your design wants its own
+commands, the core never needs edits: one C file, built on the
+core with `tt_extension()` in a short CMakeLists. Start by copying
+[example/](example/), a complete minimal project.
+[docs/extending.md](../docs/extending.md) explains what the
+firmware does on its own and then each hook.
 
 ## Carrier detection
 
