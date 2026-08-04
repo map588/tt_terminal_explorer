@@ -78,6 +78,11 @@ class TTExplorerApp(App):
         padding: 0 1; background: $boost;
     }
     #freq-input:focus { background: $primary-darken-2; }
+    .byte-input {
+        width: 18; height: 1; border: none;
+        padding: 0 1; margin-left: 2; background: $boost;
+    }
+    .byte-input:focus { background: $primary-darken-2; }
     #freq-preview { width: 22; margin: 0 1; color: $success; }
     #freq-preview.preview-bad { color: $warning; }
     .hint { color: $text-muted; }
@@ -395,7 +400,12 @@ class TTExplorerApp(App):
                     ui.set_bus(True)
                 else:
                     ui.set_bus(False)
-        elif bid.startswith("uio"):
+        elif bid.startswith("uiov"):
+            # The firmware latches the value and applies it only on
+            # driven pins, so a value edit never forces a drive.
+            panel = self.query_one(UioPanel)
+            await self.send(f"uiow {protocol.hex_byte(panel.value())}")
+        elif bid.startswith("uiod"):
             panel = self.query_one(UioPanel)
             # value latch first, so a newly-driven pin never glitches
             await self.send(f"uiow {protocol.hex_byte(panel.value())}")
@@ -440,6 +450,18 @@ class TTExplorerApp(App):
                 event.input.value = ""
         elif event.input.id == "freq-input":
             await self._set_freq_from_input()
+        elif event.input.id == "ui-value":
+            byte = protocol.parse_pin_byte(value)
+            if byte is None:
+                self._log(f"! cannot read {value!r}, try a5 or 0b10100101")
+                return
+            reply = await self.send(f"ui {protocol.hex_byte(byte)}")
+            if reply and reply.ok:
+                ui = self.query_one(UiPanel)
+                ui.set_value(byte)
+                self._ui_driving = True
+                ui.set_bus(True)
+                event.input.value = ""
 
 
 def main() -> None:

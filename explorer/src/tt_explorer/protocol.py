@@ -69,6 +69,27 @@ def hex_byte(value: int) -> str:
     return f"{value:02x}"
 
 
+def parse_pin_byte(text: str) -> int | None:
+    """A byte the user typed for a pin bus. Accepts hex ('a5',
+    '0xa5') and binary ('0b101', or exactly 8 bare 0/1 digits so
+    '10100101' reads as bits, not hex). None when unreadable."""
+    text = text.strip().lower().replace("_", "")
+    if not text:
+        return None
+    try:
+        if text.startswith("0b"):
+            value = int(text[2:], 2)
+        elif text.startswith("0x"):
+            value = int(text[2:], 16)
+        elif len(text) == 8 and set(text) <= {"0", "1"}:
+            value = int(text, 2)
+        else:
+            value = int(text, 16)
+    except ValueError:
+        return None
+    return value if 0 <= value <= 255 else None
+
+
 def parse_hex_byte(payload: str) -> int:
     value = int(payload, 16)
     if not 0 <= value <= 255:

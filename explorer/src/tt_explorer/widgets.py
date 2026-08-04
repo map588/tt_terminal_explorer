@@ -197,6 +197,8 @@ class UiPanel(Vertical):
                 [("mcu", " MCU ", "cyc-mcu"),
                  ("ext", " DIP·PMOD ", "cyc-ext")],
                 id="ui-bus")
+            yield Input(placeholder="a5 · 0b10100101", id="ui-value",
+                        classes="byte-input")
         for i in range(8):
             with Horizontal(classes="pin-row"):
                 yield Label(str(i), classes="pin-bit")
@@ -212,6 +214,12 @@ class UiPanel(Vertical):
             if self.query_one(f"#ui{i}", CycleButton).state == "1":
                 v |= 1 << i
         return v
+
+    def set_value(self, value: int) -> None:
+        """Sync the per-pin buttons to a byte, silently."""
+        for i in range(8):
+            self.query_one(f"#ui{i}", CycleButton).set_state(
+                "1" if (value >> i) & 1 else "0")
 
     def set_names(self, pinout: dict[str, str]) -> None:
         for i in range(8):
@@ -283,24 +291,26 @@ class UioPanel(Vertical):
             with Horizontal(classes="pin-row"):
                 yield Label(str(i), classes="pin-bit")
                 yield CycleButton(
-                    [("listen", " listen ", "cyc-listen"),
-                     ("d0", " drive 0 ", "cyc-low"),
-                     ("d1", " drive 1 ", "cyc-high")],
-                    id=f"uio{i}", classes="pin-btn")
+                    [("in", " in ", "cyc-listen"),
+                     ("out", " out ", "cyc-mcu")],
+                    id=f"uiod{i}", classes="pin-btn")
+                yield CycleButton(
+                    [("0", " 0 ", "cyc-low"), ("1", " 1 ", "cyc-high")],
+                    id=f"uiov{i}", classes="pin-btn")
                 yield Static("○", id=f"uio-lvl{i}", classes="pin-lvl")
                 yield Label("", id=f"uio-name{i}", classes="pin-name")
 
     def mask(self) -> int:
         v = 0
         for i in range(8):
-            if self.query_one(f"#uio{i}", CycleButton).state != "listen":
+            if self.query_one(f"#uiod{i}", CycleButton).state == "out":
                 v |= 1 << i
         return v
 
     def value(self) -> int:
         v = 0
         for i in range(8):
-            if self.query_one(f"#uio{i}", CycleButton).state == "d1":
+            if self.query_one(f"#uiov{i}", CycleButton).state == "1":
                 v |= 1 << i
         return v
 
@@ -334,7 +344,8 @@ class UioPanel(Vertical):
 
     def reset(self) -> None:
         for i in range(8):
-            self.query_one(f"#uio{i}", CycleButton).set_state("listen")
+            self.query_one(f"#uiod{i}", CycleButton).set_state("in")
+            self.query_one(f"#uiov{i}", CycleButton).set_state("0")
 
 
 

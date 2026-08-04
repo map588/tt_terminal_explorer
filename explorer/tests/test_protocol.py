@@ -62,6 +62,19 @@ def test_hex_byte_roundtrip():
     assert protocol.parse_hex_byte("a5") == 0xA5
 
 
+def test_parse_pin_byte():
+    assert protocol.parse_pin_byte("a5") == 0xA5
+    assert protocol.parse_pin_byte("0xA5") == 0xA5
+    assert protocol.parse_pin_byte("7") == 7
+    assert protocol.parse_pin_byte("0b101") == 5
+    assert protocol.parse_pin_byte("10100101") == 0xA5
+    assert protocol.parse_pin_byte("1010_0101") == 0xA5
+    assert protocol.parse_pin_byte("10") == 0x10  # short digits read as hex
+    assert protocol.parse_pin_byte("") is None
+    assert protocol.parse_pin_byte("zz") is None
+    assert protocol.parse_pin_byte("1ff") is None  # over one byte
+
+
 def test_seven_seg():
     from tt_explorer.widgets import seven_seg
     # 0x6d lights a..g for the digit 5: a,c,d,f,g on; b,e,dp off
