@@ -8,7 +8,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-FIELDS = "address,title,author,description,clock_hz,pinout"
+FIELDS = ("address,title,author,description,clock_hz,pinout"
+          ",repo,tiles,analog_pins")
 CACHE_DIR = Path("~/.cache/tt-explorer").expanduser()
 CACHE_MAX_AGE_S = 7 * 24 * 3600
 
@@ -22,6 +23,9 @@ class Project:
     description: str = ""
     clock_hz: int | None = None
     pinout: dict[str, str] = field(default_factory=dict)
+    repo: str = ""
+    tiles: str = ""
+    analog_pins: list[int] = field(default_factory=list)
 
 
 def _parse(raw: bytes) -> list[Project]:
@@ -37,6 +41,9 @@ def _parse(raw: bytes) -> list[Project]:
                 description=p.get("description", ""),
                 clock_hz=p.get("clock_hz"),
                 pinout=p.get("pinout", {}) or {},
+                repo=p.get("repo", "") or "",
+                tiles=p.get("tiles", "") or "",
+                analog_pins=list(p.get("analog_pins", []) or []),
             )
         )
     projects.sort(key=lambda p: p.address)
@@ -48,7 +55,9 @@ def load_index(shuttle: str, refresh: bool = False) -> list[Project]:
     cache is stale or refresh is requested; otherwise (and on fetch
     failure) use the cache."""
     url = f"https://index.tinytapeout.com/{shuttle}.json?fields={FIELDS}"
-    cache = CACHE_DIR / f"{shuttle}.json"
+    # The cache name carries a version: a cache written before a
+    # FIELDS change lacks the new fields and must not satisfy reads.
+    cache = CACHE_DIR / f"{shuttle}-v2.json"
     cache_ok = cache.exists()
     cache_fresh = cache_ok and (time.time() - cache.stat().st_mtime) < CACHE_MAX_AGE_S
 

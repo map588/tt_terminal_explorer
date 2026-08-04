@@ -170,6 +170,15 @@ class DetailPane(VerticalScroll):
         ]
         if p.clock_hz:
             lines += ["", f"intended clock: {p.clock_hz:,} Hz"]
+        if p.tiles:
+            lines += [f"size: {p.tiles} tiles"]
+        if p.repo:
+            lines += [f"repo: [link={p.repo}]{p.repo}[/link]"]
+        if p.analog_pins:
+            pins = ", ".join(str(a) for a in p.analog_pins)
+            lines += ["", f"[yellow]analog design (analog pins: {pins}). "
+                      "The digital bench cannot drive or read the analog "
+                      "side.[/yellow]"]
         lines += ["", "[dim]press enter (or click the row again) to load "
                   "it on the Bench[/dim]"]
         self.query_one("#detail-text", Static).update("\n".join(lines))
