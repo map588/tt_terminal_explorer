@@ -95,3 +95,13 @@ def parse_hex_byte(payload: str) -> int:
     if not 0 <= value <= 255:
         raise ValueError(f"byte out of range: {payload!r}")
     return value
+
+
+def parse_trace(reply: Reply) -> list[int]:
+    """Samples from a trace reply. The firmware sends them as info
+    lines: '# t' followed by 6-hex-digit words, eight per line."""
+    samples: list[int] = []
+    for line in reply.info:
+        if line.startswith("# t"):
+            samples += [int(w, 16) for w in line[3:].split()]
+    return samples

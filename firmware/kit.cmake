@@ -36,11 +36,13 @@ function(tt_core_library)
         ${TT_CORE_DIR}/src/commands.c
         ${TT_CORE_DIR}/src/clock.c
         ${TT_CORE_DIR}/src/board.c
+        ${TT_CORE_DIR}/src/trace.c
     )
     target_include_directories(tt_core PUBLIC ${TT_CORE_DIR}/include)
     target_link_libraries(tt_core
         pico_stdlib
         hardware_pio
+        hardware_dma
     )
 endfunction()
 

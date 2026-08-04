@@ -62,6 +62,19 @@ def test_hex_byte_roundtrip():
     assert protocol.parse_hex_byte("a5") == 0xA5
 
 
+def test_parse_trace():
+    r = protocol.Reply(True, "n=16 freq=200000", [
+        "# t 000001 000002 000003 000004 000005 000006 000007 000008",
+        "# not a sample line",
+        "# t 800001 000000 ffffff 123abc 000000 000000 000000 000010",
+    ])
+    samples = protocol.parse_trace(r)
+    assert len(samples) == 16
+    assert samples[0] == 1
+    assert samples[8] == 0x800001
+    assert samples[11] == 0x123ABC
+
+
 def test_parse_pin_byte():
     assert protocol.parse_pin_byte("a5") == 0xA5
     assert protocol.parse_pin_byte("0xA5") == 0xA5

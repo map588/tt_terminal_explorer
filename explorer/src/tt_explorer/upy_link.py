@@ -144,6 +144,9 @@ class UpyLink:
     # The board pushes uo_out changes; the UI need not poll them.
     pushes_uo = True
 
+    # The stock firmware has no signal capture.
+    traces = False
+
     def __init__(self, port: str, on_line: Callable[[str], None]):
         self._ser = serial.Serial(port, 115200, timeout=0.2)
         self._on_line = on_line

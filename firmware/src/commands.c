@@ -18,6 +18,7 @@
 #include "clock.h"
 #include "commands.h"
 #include "ext.h"
+#include "trace.h"
 #include "tt_pins.h"
 
 #define PROTO_VERSION 2u
@@ -283,6 +284,31 @@ static const char *cmd_uiow(int argc, char **argv) {
     return NULL;
 }
 
+/* One sample of all 24 project pins per clock rising edge. Info
+ * lines carry the samples, eight 6-hex-digit words per line; the
+ * reply reports the count that landed and the clock. */
+static const char *cmd_trace(int argc, char **argv) {
+    uint32_t n;
+    if (argc != 2 || !parse_u32(argv[1], &n))
+        return "bad-arg";
+    if (n < TRACE_MIN || n > TRACE_MAX)
+        return "range";
+    if (clk_mode != CLK_RUN)
+        return "mode";
+    if (clk_hz > trace_max_hz())
+        return "too-fast";
+    uint32_t got = trace_capture(n);
+    for (uint32_t i = 0; i < got; i += 8) {
+        printf("# t");
+        for (uint32_t j = i; j < got && j < i + 8; j++)
+            printf(" %06lx", (unsigned long)trace_buf[j]);
+        printf("\n");
+    }
+    sprintf(tt_reply, "n=%lu freq=%lu", (unsigned long)got,
+            (unsigned long)clk_hz);
+    return NULL;
+}
+
 static const char *cmd_help(int argc, char **argv);
 
 static const struct cmd cmds[] = {
@@ -299,6 +325,8 @@ static const struct cmd cmds[] = {
     {"uio", cmd_uio, "uio                read uio pad levels"},
     {"uiod", cmd_uiod, "uiod [hh]          set/get uio dir mask, 1=MCU drives"},
     {"uiow", cmd_uiow, "uiow <hh>          write uio output latch"},
+    {"trace", cmd_trace, "trace <n>          sample all pins per clock edge,"
+                         " 16..4096"},
     {"help", cmd_help, "help               this list"},
 };
 

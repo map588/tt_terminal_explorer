@@ -22,6 +22,7 @@ this protocol, and a bare terminal (`tio`, `screen`) works too.
 | `ui <hh>` / `ui off` / `ui` | drive ui_in, release it for the DIP switches / PMOD, or read the pad levels |
 | `uo` / `uio` | read uo_out / uio pad levels (hex byte) |
 | `uiod [hh]` / `uiow <hh>` | uio direction mask (1 = MCU drives) / output latch |
+| `trace <n>` | capture n samples (16..4096) of all 24 project pins, one per clock rising edge. Samples arrive as `# t` info lines, eight 6-hex-digit words each (bits 0-7 ui, 8-15 uio, 16-23 uo). Needs a running clock at or below clk_sys/8. |
 
 ## Build
 

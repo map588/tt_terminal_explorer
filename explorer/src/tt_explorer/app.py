@@ -28,6 +28,7 @@ from .widgets import (
     CycleButton,
     DetailPane,
     ProjectList,
+    TracePanel,
     UiPanel,
     UioPanel,
     UoPanel,
@@ -120,6 +121,19 @@ class TTExplorerApp(App):
 
     #proj-reset { background: $panel-lighten-1; }
     .pin-designout { color: $warning; }
+
+    /* signals tab */
+    TracePanel { padding: 0 1; }
+    #trace-controls { height: 1; margin-bottom: 1; }
+    #trace-depth { width: 8; height: 1; border: none;
+                   padding: 0 1; background: $boost; }
+    #trace-depth:focus { background: $primary-darken-2; }
+    #trace-run { border: none; height: 1; margin: 0 2; }
+    #trace-status { color: $text-muted; }
+    #trace-body { height: 1fr; margin-top: 1; }
+    #trace-labels { width: 27; color: $text-muted; }
+    #trace-scroll { width: 1fr; }
+    #trace-waves { width: auto; color: $success; }
     """
 
     BINDINGS = [
@@ -156,6 +170,8 @@ class TTExplorerApp(App):
                         yield UoPanel()
                         yield UioPanel()
                     yield ConsolePane()
+            with TabPane("Signals", id="tab-signals"):
+                yield TracePanel()
         yield Footer()
 
     # -- startup --
@@ -196,6 +212,9 @@ class TTExplorerApp(App):
         self.query_one(ClockPanel).set_range(
             self.link.clk_min_hz, self.link.clk_max_hz,
             self.link.clock_note)
+        if not getattr(self.link, "traces", False):
+            self.query_one(TabbedContent).get_tab(
+                "tab-signals").disabled = True
         self._carrier = None
         reply = await self.send("hello")
         if reply and reply.ok:
@@ -219,13 +238,14 @@ class TTExplorerApp(App):
 
     # -- command plumbing --
 
-    async def send(self, cmd: str) -> protocol.Reply | None:
+    async def send(self, cmd: str,
+                   timeout: float = 3.0) -> protocol.Reply | None:
         if self.link is None:
             self._log("! not connected")
             return None
         self._log(f"> {cmd}")
         try:
-            reply = await self.link.request(cmd)
+            reply = await self.link.request(cmd, timeout=timeout)
         except asyncio.TimeoutError:
             self._log(f"! timeout waiting for reply to {cmd!r}")
             return None
@@ -249,6 +269,8 @@ class TTExplorerApp(App):
         return reply
 
     def _log(self, line: str) -> None:
+        if line.startswith("# t"):
+            return  # trace sample lines: hundreds, shown as waveforms
         self.query_one(ConsolePane).log_line(line)
 
     async def _refresh_status(self) -> None:
@@ -337,6 +359,33 @@ class TTExplorerApp(App):
             self._steps += n
             self.query_one(ClockPanel).set_steps(self._steps)
 
+    async def _do_trace(self) -> None:
+        panel = self.query_one(TracePanel)
+        text = self.query_one("#trace-depth", Input).value.strip() or "256"
+        if not text.isdigit() or not 16 <= int(text) <= 4096:
+            panel.set_status("samples must be 16..4096")
+            return
+        n = int(text)
+        # The capture takes n clock periods; give slow clocks time.
+        timeout = 3.0 + (1.5 * n / self._freq if self._freq else 0.0)
+        panel.set_status("capturing…")
+        reply = await self.send(f"trace {n}", timeout=timeout)
+        if reply is None:
+            panel.set_status("no reply")
+            return
+        if not reply.ok:
+            hints = {"mode": "the clock is stopped — resume it first",
+                     "too-fast": "clock too fast for the capture loop"}
+            panel.set_status(hints.get(reply.payload,
+                                       f"trace failed: {reply.payload}"))
+            return
+        samples = protocol.parse_trace(reply)
+        panel.show(samples)
+        fields = dict(part.partition("=")[::2] for part in
+                      reply.payload.split())
+        freq = int(fields.get("freq", 0) or 0)
+        panel.set_status(f"{len(samples)} samples at {freq:,} Hz")
+
 
 
     # -- UI events --
@@ -369,6 +418,7 @@ class TTExplorerApp(App):
         self.query_one(UiPanel).set_names(p.pinout)
         self.query_one(UoPanel).set_names(p.pinout)
         self.query_one(UioPanel).set_names(p.pinout)
+        self.query_one(TracePanel).set_names(p.pinout)
         self.query_one(UiPanel).reset()
         self.query_one(UioPanel).reset()
         self._ui_driving = True
@@ -432,6 +482,8 @@ class TTExplorerApp(App):
             await self.send("reset")
         elif bid == "addr-load":
             await self._load_by_address()
+        elif bid == "trace-run":
+            await self._do_trace()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "freq-input":
