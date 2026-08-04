@@ -5,7 +5,12 @@ from __future__ import annotations
 import re
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import (
+    Horizontal,
+    HorizontalScroll,
+    Vertical,
+    VerticalScroll,
+)
 from textual.message import Message
 from textual.widgets import (
     Button,
@@ -173,7 +178,7 @@ class DetailPane(VerticalScroll):
         if p.tiles:
             lines += [f"size: {p.tiles} tiles"]
         if p.repo:
-            lines += [f"repo: [link={p.repo}]{p.repo}[/link]"]
+            lines += [f"repo: {p.repo}"]
         if p.analog_pins:
             pins = ", ".join(str(a) for a in p.analog_pins)
             lines += ["", f"[yellow]analog design (analog pins: {pins}). "
@@ -422,6 +427,53 @@ class ClockPanel(Vertical):
 
     def set_error(self, text: str) -> None:
         self.query_one("#clk-error", Static).update(text)
+
+
+class TracePanel(Vertical):
+    """One-shot signal capture: 24 lanes, one column per project
+    clock edge (the firmware's `trace` command). Fast outputs that
+    the polled dots cannot show become waveforms here."""
+
+    BUSES = (("ui", 0), ("uio", 8), ("uo", 16))
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._pinout: dict[str, str] = {}
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="trace-controls"):
+            yield Label("samples: ")
+            yield Input(value="256", id="trace-depth")
+            yield Button("Capture", id="trace-run")
+            yield Static("", id="trace-status")
+        yield Label("one column per project clock rising edge · "
+                    "the clock must be running", classes="hint")
+        with Horizontal(id="trace-body"):
+            yield Static("", id="trace-labels")
+            with HorizontalScroll(id="trace-scroll"):
+                yield Static("", id="trace-waves")
+
+    def set_names(self, pinout: dict[str, str]) -> None:
+        self._pinout = pinout
+
+    def set_status(self, text: str) -> None:
+        self.query_one("#trace-status", Static).update(text)
+
+    def show(self, samples: list[int]) -> None:
+        labels: list[str] = []
+        waves: list[str] = []
+        for bus, base in self.BUSES:
+            if labels:
+                labels.append("")
+                waves.append("")
+            for i in range(8):
+                bits = [(s >> (base + i)) & 1 for s in samples]
+                name = self._pinout.get(f"{bus}[{i}]", "")
+                tag = f" = {bits[0]}" if len(set(bits)) == 1 else ""
+                labels.append(f"{bus}[{i}] {name}{tag}"[:26])
+                waves.append("".join("▔" if b else "▁" for b in bits))
+        self.query_one("#trace-labels", Static).update("\n".join(labels))
+        self.query_one("#trace-waves", Static).update("\n".join(waves))
 
 
 class ConsolePane(Vertical):
