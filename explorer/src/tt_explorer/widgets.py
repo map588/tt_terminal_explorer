@@ -191,9 +191,12 @@ class DetailPane(VerticalScroll):
 
 class UiPanel(Vertical):
     """The 8 chip inputs. Either the MCU drives them (value buttons)
-    or the bus is released so the DIP switches / PMOD drive."""
+    or the bus is released so the DIP switches / PMOD drive. An
+    extension can lock pins its firmware host owns (lock_bits)."""
 
     BORDER_TITLE = "ui_in (chip inputs)"
+
+    _locked = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="bus-head"):
@@ -235,7 +238,8 @@ class UiPanel(Vertical):
         self.query_one("#ui-bus", CycleButton).set_state(
             "mcu" if mcu_drives else "ext")
         for i in range(8):
-            self.query_one(f"#ui{i}", CycleButton).disabled = not mcu_drives
+            self.query_one(f"#ui{i}", CycleButton).disabled = (
+                not mcu_drives or bool((self._locked >> i) & 1))
             if mcu_drives:
                 self.query_one(f"#ui-lvl{i}", Static).update("·")
 
@@ -244,6 +248,17 @@ class UiPanel(Vertical):
         for i in range(8):
             self.query_one(f"#ui-lvl{i}", Static).update(
                 _dot((value >> i) & 1))
+
+    def lock_bits(self, mask: int) -> None:
+        """Pins an extension's firmware host owns: their value
+        buttons stay disabled, and the value box is off while any
+        pin is locked. Pass 0 to unlock."""
+        self._locked = mask
+        self.query_one("#ui-value", Input).disabled = bool(mask)
+        mcu = self.query_one("#ui-bus", CycleButton).state == "mcu"
+        for i in range(8):
+            self.query_one(f"#ui{i}", CycleButton).disabled = (
+                not mcu or bool((mask >> i) & 1))
 
     def reset(self) -> None:
         for i in range(8):
@@ -346,6 +361,15 @@ class UioPanel(Vertical):
         for i in range(8):
             self.query_one(f"#uio-lvl{i}", Static).update(
                 _dot((value >> i) & 1))
+
+    def lock_bits(self, mask: int) -> None:
+        """Pins an extension's firmware host owns: direction and
+        value buttons disabled, level dots stay live. Pass 0 to
+        unlock."""
+        for i in range(8):
+            locked = bool((mask >> i) & 1)
+            self.query_one(f"#uiod{i}", CycleButton).disabled = locked
+            self.query_one(f"#uiov{i}", CycleButton).disabled = locked
 
     def reset(self) -> None:
         for i in range(8):

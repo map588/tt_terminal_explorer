@@ -172,7 +172,30 @@ class TTExplorerApp(App):
                     yield ConsolePane()
             with TabPane("Signals", id="tab-signals"):
                 yield TracePanel()
+            yield from self.extension_tabs()
         yield Footer()
+
+    # -- extension hooks --
+    #
+    # The UI twin of the firmware's ext.h slots: a project-specific
+    # explorer subclasses TTExplorerApp and fills the hooks it needs.
+    # Everything else, including future kit features, is inherited.
+
+    def extension_tabs(self):
+        """Extra TabPane widgets after the built-in tabs."""
+        return ()
+
+    def on_hello(self, hello: dict) -> None:
+        """The parsed hello reply, right after connecting."""
+
+    def on_design_loaded(self, p: Project) -> None:
+        """A design was selected and its panels are reset. Runs
+        before the clock is set."""
+
+    def design_clock_cap(self, p: Project) -> int | None:
+        """Upper clock bound for this design, or None for the link
+        maximum."""
+        return None
 
     # -- startup --
 
@@ -228,6 +251,7 @@ class TTExplorerApp(App):
             sdk = hello.get("sdk")
             if sdk and sdk != "unknown":
                 self.sub_title = f"{self.sub_title} · SDK {sdk}"
+            self.on_hello(hello)
         await self._refresh_status()
         if getattr(self.link, "pushes_uo", False):
             self.link.set_uo_sink(self._on_uo_push)
@@ -422,9 +446,15 @@ class TTExplorerApp(App):
         self.query_one(UiPanel).reset()
         self.query_one(UioPanel).reset()
         self._ui_driving = True
+        self.on_design_loaded(p)
         if p.clock_hz:
-            hz = min(max(p.clock_hz, self.link.clk_min_hz),
-                     self.link.clk_max_hz) if self.link else p.clock_hz
+            hz = p.clock_hz
+            if self.link:
+                top = self.link.clk_max_hz
+                cap = self.design_clock_cap(p)
+                if cap is not None:
+                    top = min(top, cap)
+                hz = min(max(hz, self.link.clk_min_hz), top)
             await self._clock_send(f"freq {hz}")
         await self._refresh_status()
         tabs = self.query_one(TabbedContent)
