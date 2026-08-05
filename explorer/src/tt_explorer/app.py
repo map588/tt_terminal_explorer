@@ -8,6 +8,7 @@ import os
 
 from textual import work
 from textual.app import App, ComposeResult
+from textual.css.query import NoMatches
 from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Button,
@@ -343,6 +344,8 @@ class TTExplorerApp(App):
                         protocol.parse_hex_byte(reply.payload))
         except (asyncio.TimeoutError, ValueError, OSError):
             pass
+        except NoMatches:
+            pass  # the poll timer can fire while the app shuts down
 
     # -- actions --
 
@@ -436,7 +439,11 @@ class TTExplorerApp(App):
 
     async def _load_design(self, p: Project) -> None:
         self.query_one(DetailPane).show(p)
-        reply = await self.send(f"design {p.address}")
+        # The firmware walks the mux one address per millisecond plus
+        # settle time, so high addresses take over two seconds. The
+        # default timeout sat right on that edge and high designs
+        # intermittently "did not load".
+        reply = await self.send(f"design {p.address}", timeout=10.0)
         if not (reply and reply.ok):
             return
         self.query_one(UiPanel).set_names(p.pinout)
