@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import glob
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -60,6 +61,15 @@ class SerialLink:
     def __init__(self, port: str, on_line: Callable[[str], None]):
         """on_line gets every unsolicited line (called on the loop)."""
         self._ser = serial.Serial(port, BAUD, timeout=0.2)
+        # A previous session may have died mid-command and left a
+        # partial line in the firmware's reader. Erase it with
+        # backspaces (the line buffer holds at most 127 chars, and a
+        # newline could EXECUTE the leftover), then discard the
+        # fallout, so the first echo arrives intact — a broken first
+        # echo otherwise poisons every later reply.
+        self._ser.write(b"\x7f" * 128 + b"\n")
+        time.sleep(0.25)
+        self._ser.reset_input_buffer()
         self._on_line = on_line
         self._loop = asyncio.get_running_loop()
         self._lock = asyncio.Lock()
@@ -116,6 +126,17 @@ class SerialLink:
             try:
                 self._ser.write((line + "\n").encode())
                 return await asyncio.wait_for(fut, timeout)
+            except asyncio.TimeoutError:
+                # Leave the firmware at a clean line boundary. Without
+                # this, the next command's echo interleaves with the
+                # late reply, the mangled echo never correlates, and
+                # one timeout snowballs into every later command
+                # timing out.
+                try:
+                    self._ser.write(b"\n")
+                except OSError:
+                    pass
+                raise
             finally:
                 self._pending = None
 
@@ -154,7 +175,9 @@ class SerialLink:
             # command that timed out, and accepting it would shift
             # every later reply to the wrong request.
             if not p.echo_dropped:
-                if line == p.sent:
+                # endswith: a leftover partial line in the firmware's
+                # reader prefixes the first echo ("<junk>status").
+                if line.endswith(p.sent):
                     p.echo_dropped = True
                 elif line:
                     self._on_line(line)
