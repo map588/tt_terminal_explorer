@@ -181,6 +181,12 @@ class TTExplorerApp(App):
     # The UI twin of the firmware's ext.h slots: a project-specific
     # explorer subclasses TTExplorerApp and fills the hooks it needs.
     # Everything else, including future kit features, is inherited.
+    #
+    # Textual dispatches message handlers (on_mount, on_button_pressed,
+    # on_input_submitted, ...) once for EVERY class in the MRO that
+    # defines one. A subclass handler must therefore NOT call super():
+    # the kit's handler runs on its own, and a super() call runs it a
+    # second time.
 
     def extension_tabs(self):
         """Extra TabPane widgets after the built-in tabs."""
@@ -218,6 +224,12 @@ class TTExplorerApp(App):
             self._log, f"# index: {len(projects)} projects")
 
     async def _connect(self) -> None:
+        # A second Mount dispatch (a subclass on_mount that calls
+        # super()) must never open the port twice: two reader threads
+        # on one device steal each other's replies and every command
+        # times out.
+        if self.link is not None:
+            return
         ports = [self._port_arg] if self._port_arg else find_ports()
         if not ports:
             self._log("! no serial port found. Is the board plugged in?")
