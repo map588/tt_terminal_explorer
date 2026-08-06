@@ -132,7 +132,9 @@ def test_upy_translate():
     assert link._translate("step 10") == "_tt_step(10)"
     assert link._translate("reset") == "_tt_reset(2)"
     assert link._translate("reset 1") == "_tt_reset(1)"
-    assert link._translate("monitor 20") == "_tt_monitor(20)"
+    # a board-side push timer corrupts the raw-REPL framing, so the
+    # monitor command is gone and uo is polled like the other pins
+    assert link._translate("monitor 20") is None
     assert link._translate("ui ff") == "_tt_ui(255)"
     assert "ASIC_MANUAL_INPUTS" in link._translate("ui off")
     assert "uio_oe_pico.value = 240" in link._translate("uiod f0")

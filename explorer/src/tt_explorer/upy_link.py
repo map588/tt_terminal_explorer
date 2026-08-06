@@ -8,10 +8,13 @@ exec and synthesizes the same "ok/err" replies, so the UI cannot tell
 the two firmwares apart.
 
 Marker convention inside the REPL: helper code prints exactly one
-line starting with "R " (ok + payload) or "E " (err + token). A
-board-side timer pushes "U <hex>" lines whenever uo_out changes
-(started with the `monitor <hz>` command). Every other stdout line
-is an SDK log line and is forwarded to the console.
+line starting with "R " (ok + payload) or "E " (err + token). Every
+other stdout line is an SDK log line and is forwarded to the
+console. The board never prints on its own between execs: a
+board-side timer that pushes lines (an earlier design) interleaves
+its print with the raw-REPL response framing at arbitrary byte
+positions, and a corrupted frame loses the reply. The UI polls
+uo_out over normal execs instead.
 
 A background thread reads the port. Between execs it dispatches
 pushed lines at once; during an exec it collects the framed response
@@ -36,8 +39,8 @@ RAW_REPL_PROMPT = b"raw REPL; CTRL-B to exit\r\n>"
 
 # Runs once at connect: get the SDK handle the boot script made and
 # define one helper per command that needs more than a single call.
-# The globals survive reconnects, so a monitor timer from an earlier
-# session is stopped before _mon is rebuilt.
+# The globals survive reconnects, so a push timer started by an
+# earlier kit version is stopped here (this version starts none).
 BOOTSTRAP = """
 try:
     tt
@@ -45,7 +48,6 @@ except NameError:
     from ttboard.demoboard import DemoBoard
     tt = DemoBoard.get()
 from ttboard.mode import RPMode
-import machine as _m
 import time as _t
 try:
     if _mon['t']:
@@ -107,20 +109,6 @@ def _tt_step(n):
     for _ in range(n):
         tt.clock_project_once()
     _R(str(n))
-def _tt_mon_cb(t):
-    v = int(tt.uo_out.value)
-    if v != _mon['last']:
-        _mon['last'] = v
-        print('U %02x' % v)
-def _tt_monitor(freq):
-    if _mon['t']:
-        _mon['t'].deinit()
-        _mon['t'] = None
-    _mon['last'] = -1
-    if freq > 0:
-        _mon['t'] = _m.Timer(mode=_m.Timer.PERIODIC, freq=freq,
-                             callback=_tt_mon_cb)
-    _R('')
 _R('ready')
 """
 
@@ -141,8 +129,10 @@ class UpyLink:
     clk_max_hz = 66_000_000
     clock_note = "PWM"
 
-    # The board pushes uo_out changes; the UI need not poll them.
-    pushes_uo = True
+    # The UI polls uo_out with normal execs. A board-side push timer
+    # would print into the raw-REPL response framing (see the module
+    # docstring), so there is none.
+    pushes_uo = False
 
     # The stock firmware has no signal capture.
     traces = False
@@ -198,10 +188,7 @@ class UpyLink:
             pass
         self._thread.join(timeout=1.0)
         try:
-            # stop the push timer and hand the friendly REPL back
-            self._ser.timeout = 0.5
-            self._ser.write(b"_tt_monitor(0)\x04")
-            time.sleep(0.2)
+            # hand the friendly REPL back
             self._ser.write(b"\x02")
             self._ser.close()
         except OSError:
@@ -260,8 +247,6 @@ class UpyLink:
             if args == ["0"]:
                 return "_tt_reset(0)"
             return None
-        if cmd == "monitor" and len(args) == 1 and args[0].isdigit():
-            return f"_tt_monitor({int(args[0])})"
         if cmd == "ui":
             if not args:
                 return "_R('%02x' % int(tt.ui_in.value))"
@@ -304,9 +289,13 @@ class UpyLink:
             else:
                 info.append(f"# upy: {line}")
                 self._on_line(f"# upy: {line}")
-        if err:
-            last = err.strip().splitlines()[-1] if err.strip() else "error"
-            self._on_line(f"# upy: {last}")
+        # Pushed "U xx" lines can also land in the err channel of the
+        # frame; only real exception text counts as an error.
+        err_lines = [ln for ln in (ANSI.sub("", l).strip()
+                                   for l in err.splitlines())
+                     if ln and not self._dispatch_push(ln)]
+        if err_lines:
+            self._on_line(f"# upy: {err_lines[-1]}")
             return Reply(False, "upy-exception", info)
         return result or Reply(False, "no-reply", info)
 
@@ -346,6 +335,15 @@ class UpyLink:
                 if pend is None:
                     # idle: only complete pushed/log lines can arrive
                     if b"\n" not in buf:
+                        # a frame whose request timed out ends in the
+                        # prompt with no newline; drop it, or it
+                        # poisons the next exec's OK acknowledgement
+                        i = buf.rfind(b"\x04")
+                        if i >= 0:
+                            p = buf.find(b">", i)
+                            if p >= 0:
+                                buf = buf[p + 1:]
+                                continue
                         break
                     raw, buf = buf.split(b"\n", 1)
                     self._route_idle_line(raw)
@@ -362,16 +360,39 @@ class UpyLink:
                         pend.acked = True
                         continue
                     break  # partial OK or partial line
-                end = buf.find(b"\x04>")
-                if end < 0:
+                # The frame is <stdout> \x04 <err> \x04 >. The board's
+                # monitor timer prints from a callback, so a pushed
+                # "U xx" line can land between the framing bytes: a
+                # strict find(b"\x04>") then never matches, the
+                # request times out, and the stale frame desyncs
+                # every later exec. Parse the two \x04 marks and the
+                # prompt separately, and route what sits between the
+                # second mark and the prompt as pushed lines.
+                i1 = buf.find(b"\x04")
+                if i1 < 0:
                     break
-                body, buf = buf[:end], buf[end + 2:]
-                stdout, _, err = body.partition(b"\x04")
+                i2 = buf.find(b"\x04", i1 + 1)
+                if i2 < 0:
+                    break
+                p = buf.find(b">", i2 + 1)
+                if p < 0:
+                    break
+                stdout = buf[:i1]
+                err = buf[i1 + 1:i2]
+                between, buf = buf[i2 + 1:p], buf[p + 1:]
+                for raw in between.splitlines():
+                    self._route_idle_line(raw)
                 self._loop.call_soon_threadsafe(
                     self._resolve, pend,
                     stdout.decode(errors="replace"),
-                    err.rstrip(b"\x04").decode(errors="replace"))
-                self._pending = None
+                    err.decode(errors="replace"))
+                # request()'s finally clears _pending on the loop
+                # thread. Clearing it here raced the next request's
+                # assignment: the loop can resolve, return, and start
+                # the next request between the call above and a store
+                # here, and the stale None then clobbered the fresh
+                # pending, so the next reply was routed as idle junk
+                # and its request timed out.
 
     def _route_idle_line(self, raw: bytes) -> None:
         line = ANSI.sub("", raw.decode(errors="replace")).strip()
