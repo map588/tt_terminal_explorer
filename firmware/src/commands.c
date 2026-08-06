@@ -14,6 +14,8 @@
 
 #include "pico/stdlib.h"
 
+#include "hardware/structs/powman.h"
+
 #include "board.h"
 #include "clock.h"
 #include "commands.h"
@@ -284,6 +286,43 @@ static const char *cmd_uiow(int argc, char **argv) {
     return NULL;
 }
 
+/* Why the chip last reset, decoded from POWMAN. A board that comes
+ * back in its boot state mid-session reset itself; this command
+ * names the cause (brownout, watchdog, power-on, ...). */
+static const char *cmd_bootwhy(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+    static const struct {
+        uint32_t bits;
+        const char *name;
+    } causes[] = {
+        {POWMAN_CHIP_RESET_HAD_POR_BITS, "power-on"},
+        {POWMAN_CHIP_RESET_HAD_BOR_BITS, "brownout"},
+        {POWMAN_CHIP_RESET_HAD_RESCUE_BITS, "rescue"},
+        {POWMAN_CHIP_RESET_HAD_DP_RESET_REQ_BITS, "debugger"},
+        {POWMAN_CHIP_RESET_HAD_HZD_SYS_RESET_REQ_BITS, "sys-reset-req"},
+        {POWMAN_CHIP_RESET_HAD_GLITCH_DETECT_BITS, "glitch-detect"},
+        {POWMAN_CHIP_RESET_HAD_SWCORE_PD_BITS, "swcore-powerdown"},
+        {POWMAN_CHIP_RESET_HAD_RUN_LOW_BITS, "run-pin"},
+        {POWMAN_CHIP_RESET_HAD_WATCHDOG_RESET_POWMAN_ASYNC_BITS,
+         "watchdog-powman-async"},
+        {POWMAN_CHIP_RESET_HAD_WATCHDOG_RESET_POWMAN_BITS,
+         "watchdog-powman"},
+        {POWMAN_CHIP_RESET_HAD_WATCHDOG_RESET_SWCORE_BITS,
+         "watchdog-swcore"},
+        {POWMAN_CHIP_RESET_HAD_WATCHDOG_RESET_RSM_BITS, "watchdog-rsm"},
+    };
+    uint32_t r = powman_hw->chip_reset;
+    size_t used = (size_t)sprintf(tt_reply, "chip_reset=%08lx",
+                                  (unsigned long)r);
+    for (uint i = 0; i < count_of(causes); i++) {
+        if (r & causes[i].bits)
+            used += (size_t)snprintf(tt_reply + used, TT_REPLY_CAP - used,
+                                     " %s", causes[i].name);
+    }
+    return NULL;
+}
+
 /* One sample of all 24 project pins per clock rising edge. Info
  * lines carry the samples, eight 6-hex-digit words per line; the
  * reply reports the count that landed and the clock. */
@@ -327,6 +366,7 @@ static const struct cmd cmds[] = {
     {"uiow", cmd_uiow, "uiow <hh>          write uio output latch"},
     {"trace", cmd_trace, "trace <n>          sample all pins per clock edge,"
                          " 16..4096"},
+    {"bootwhy", cmd_bootwhy, "bootwhy            why the chip last reset"},
     {"help", cmd_help, "help               this list"},
 };
 
